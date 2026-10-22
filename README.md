@@ -3,7 +3,7 @@
 Windows client for the immurok Bluetooth fingerprint authentication system. Paired with a CH592F + R559S fingerprint device, it brings a Windows Hello–like experience to Windows:
 
 - **Lock-screen / logon unlock** — sign in with a fingerprint touch, via a Credential Provider
-- **SSH / git signing** — built-in SSH agent that signs with keys stored on the device (authorized by fingerprint)
+- **SSH / git signing** — built-in SSH agent that signs with keys stored on the device (authorized by fingerprint); one toggle takes over the Windows ssh-agent pipe and points git at native OpenSSH, and puts both back when turned off
 - **TOTP / key management** — OTP secrets and SSH keys kept on the device
 - **OTA firmware updates** — update device firmware over the air
 
@@ -19,6 +19,7 @@ For the macOS client see [`app-macos`](https://github.com/immurok/app-macos); bo
 | `ImmurokCli` | C# (.NET 8) | Command-line client, over the same IPC pipe |
 | `ImmurokCredentialProvider` | C++ (COM DLL) | Credential Provider that runs inside LogonUI and submits credentials on the lock screen |
 | `ImmurokConsolePrompt` | C# | Console prompt for SSH / terminal authorization |
+| `ImmurokTests` | C# (xunit) | Unit tests for pure logic (SSH agent takeover/restore, git config switch); runs on Windows and macOS |
 
 ## Build
 
@@ -29,6 +30,9 @@ Requires **Visual Studio 2022** (with the "Desktop development with C++" workloa
 ./build.ps1 -Configuration Release
 
 # Or open immurok-win.sln in Visual Studio and build (x64)
+
+# Unit tests (also runs on macOS/Linux; the flag is only needed off Windows)
+dotnet test ImmurokTests -p:EnableWindowsTargeting=true
 ```
 
 ## Install / Uninstall

@@ -14,9 +14,28 @@ on:
 
 permissions:
   contents: write          # needed to create the GitHub Release
+  id-token: write          # OIDC login to Azure for code signing (no stored secrets)
+
+# Code signing: Azure Artifact Signing (formerly Trusted Signing). Microsoft holds
+# the certificate and key; the job logs in to Azure through GitHub OIDC and
+# signtool calls the service through its dlib plug-in — no secret is stored here.
+# Configure these as *repository* variables (not environment variables — the
+# workflow-level `env` below cannot see those); none of them is a secret:
+#   AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_SUBSCRIPTION_ID   Entra app registration
+#   ARTIFACT_SIGNING_ENDPOINT   region endpoint, e.g. https://jpe.codesigning.azure.net
+#   ARTIFACT_SIGNING_ACCOUNT    Artifact Signing account name
+#   ARTIFACT_SIGNING_PROFILE    certificate profile name
+# While ARTIFACT_SIGNING_PROFILE is unset the workflow still runs and ships
+# unsigned installers.
+env:
+  SIGNING: ${{ vars.ARTIFACT_SIGNING_PROFILE != '' }}
 
 jobs:
   build:
+    # The Azure federated credential is bound to this environment
+    # (subject repo:immurok/app-win:environment:release), so only this job can
+    # sign. Add required reviewers to the environment to gate every release.
+    environment: release
     # windows-2025 ships everything this build needs, so there is nothing to
     # install at runtime:
     #   · Inno Setup 6            (packaging/build-installer.ps1 finds ISCC via the registry)
@@ -49,17 +68,30 @@ jobs:
           "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           Write-Host "Building version $v"
 
-      # Code signing is not wired up yet — see README. Once an Azure Artifact
-      # Signing account exists, sign here (it uses signtool's dlib extension
-      # rather than a certificate subject, so build-installer.ps1's current
-      # -SignToolPath / -CertSubject hooks will need to change shape).
-      # Signatures MUST be timestamped against http://timestamp.acs.microsoft.com:
-      # Artifact Signing certificates are valid for only 72 hours, so an
-      # un-timestamped signature would go invalid three days after release.
+      - name: Azure login (OIDC)
+        if: env.SIGNING == 'true'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
+      # build-installer.ps1 fetches the signing dlib, signs our own exe/dll, then
+      # has Inno Setup sign the installer and the uninstaller, and fails the build
+      # if the result does not carry a valid signature. Signatures are timestamped
+      # (the service's certificates live for only three days).
       - name: Build installers (x64 + arm64)
         shell: pwsh
-        run: .\packaging\build-installer.ps1 -Version '${{ steps.ver.outputs.version }}'
+        run: |
+          $sign = @{}
+          if ($env:SIGNING -eq 'true') {
+            $sign = @{
+              ArtifactSigningEndpoint = '${{ vars.ARTIFACT_SIGNING_ENDPOINT }}'
+              ArtifactSigningAccount  = '${{ vars.ARTIFACT_SIGNING_ACCOUNT }}'
+              ArtifactSigningProfile  = '${{ vars.ARTIFACT_SIGNING_PROFILE }}'
+            }
+          }
+          .\packaging\build-installer.ps1 -Version '${{ steps.ver.outputs.version }}' @sign
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
@@ -78,10 +110,11 @@ jobs:
           # as a GitHub pre-release; clean tags (v1.20.0) publish as a full release.
           prerelease: ${{ contains(github.ref_name, '-') }}
           body: |
-            > **Unsigned build.** SmartScreen will warn on first run until code
-            > signing is in place. The Credential Provider hooks the Windows sign-in
-            > path — validate in a snapshotted VM and keep password sign-in as a
-            > fallback before deploying to a machine you rely on.
+            ${{ env.SIGNING != 'true' && '> **Unsigned build.** SmartScreen will warn on first run.' || '' }}
+
+            > The Credential Provider hooks the Windows sign-in path — validate in a
+            > snapshotted VM and keep password sign-in as a fallback before deploying
+            > to a machine you rely on.
 
             Requires the [.NET 8 Desktop Runtime (x64)](https://dotnet.microsoft.com/download/dotnet/8.0);
             the installer checks for it and links the download if missing.

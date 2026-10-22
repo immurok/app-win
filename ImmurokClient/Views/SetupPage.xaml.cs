@@ -112,9 +112,20 @@ public partial class SetupPage : Page
     {
         if (_loading) return;
         bool on = SshAgentToggle.IsChecked == true;
-        string? r = await AppServices.Pipe.SshAgentSetAsync(on);
-        SshAgentHint.Text = on ? T("msg.setup.ssh_on") : T("msg.setup.ssh_off");
-        if (r != "OK") SshAgentHint.Text = T("common.op_fail", r ?? "");
+        SshAgentToggle.IsEnabled = false;
+        SshAgentHint.Text = T("msg.ssh.working");
+        try
+        {
+            var res = await SshAgentSwitch.SetAsync(on);
+            SshAgentHint.Text = SshAgentSwitch.Describe(res, on);
+            if (!res.Ok)
+            {
+                _loading = true;
+                SshAgentToggle.IsChecked = !on;
+                _loading = false;
+            }
+        }
+        finally { SshAgentToggle.IsEnabled = true; }
     }
 
     private async void OnSetClick(object sender, RoutedEventArgs e)

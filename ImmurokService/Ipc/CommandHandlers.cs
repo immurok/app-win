@@ -21,7 +21,7 @@ public sealed class CommandHandlers
     private readonly BleManager _ble;
     private readonly ImmurokSecurity _security;
     private readonly CredentialStore _creds;
-    private readonly SshAgentServer _sshAgent;
+    private readonly SshAgentFeature _sshFeature;
     private readonly AppSettings _settings;
     private readonly FpInjectionSignal _injectionSignal;
     private readonly OwnerStore _owner;
@@ -32,7 +32,7 @@ public sealed class CommandHandlers
     private readonly SecurityStatus _status;
 
     public CommandHandlers(ILogger<CommandHandlers> log, BleManager ble, ImmurokSecurity security,
-        CredentialStore creds, SshAgentServer sshAgent, AppSettings settings, FpInjectionSignal injectionSignal,
+        CredentialStore creds, SshAgentFeature sshFeature, AppSettings settings, FpInjectionSignal injectionSignal,
         OwnerStore owner, CallerPolicy policy,
         ScreenUnlocker unlocker, DataDirSecurity dataDir, PairingStore pairing, SecurityStatus status)
     {
@@ -45,7 +45,7 @@ public sealed class CommandHandlers
         _ble = ble;
         _security = security;
         _creds = creds;
-        _sshAgent = sshAgent;
+        _sshFeature = sshFeature;
         _settings = settings;
         _injectionSignal = injectionSignal;
         _owner = owner;
@@ -196,9 +196,7 @@ public sealed class CommandHandlers
                 case IpcProtocol.FeatureAgent:  _settings.ImkAgentEnabled = on; break;
                 case IpcProtocol.FeatureOtp:    _settings.OtpEnabled = on; break;
                 case IpcProtocol.FeatureSsh:
-                    _settings.SshAgentEnabled = on;
-                    if (on) { _sshAgent.Start(); await _sshAgent.RefreshIdentitiesAsync(); }
-                    else await _sshAgent.StopAsync();
+                    if (on) await _sshFeature.EnableAsync(); else await _sshFeature.DisableAsync();
                     break;
                 default: return IpcProtocol.ErrInvalidFormat;
             }
@@ -749,14 +747,11 @@ public sealed class CommandHandlers
             case "STATUS":
                 return $"{IpcProtocol.Ok}:{(_settings.SshAgentEnabled ? "ON" : "OFF")}";
             case "ON":
-                _settings.SshAgentEnabled = true;
-                _sshAgent.Start();
-                await _sshAgent.RefreshIdentitiesAsync();
-                return IpcProtocol.Ok;
+                // OK:TAKEN | ABSENT | TAKEOVER_FAILED | CONTENDED（见 SshAgentFeature）
+                return $"{IpcProtocol.Ok}:{await _sshFeature.EnableAsync()}";
             case "OFF":
-                _settings.SshAgentEnabled = false;
-                await _sshAgent.StopAsync();
-                return IpcProtocol.Ok;
+                // OK:RESTORED | NONE | RESTORE_FAILED
+                return $"{IpcProtocol.Ok}:{await _sshFeature.DisableAsync()}";
             default:
                 return IpcProtocol.ErrUnknownCommand;
         }

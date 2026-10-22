@@ -13,6 +13,8 @@
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.0" />
     <!-- DPAPI（ProtectedData / DataProtectionScope）在现代 .NET 中是独立包 -->
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+    <!-- 接管 / 还原 Windows 内置 ssh-agent 服务（SshAgentServer 要占同名管道） -->
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="8.0.0" />
     <!-- 仅用于把设备的 compressed P-256 公钥解压成 uncompressed 点（BCL 不直接支持） -->
     <PackageReference Include="BouncyCastle.Cryptography" Version="2.4.0" />
     <!-- 结构化日志：滚动日志文件（服务模式下无控制台，日志需落盘） -->

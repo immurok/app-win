@@ -10,7 +10,7 @@ namespace ImmurokClient.Localization;
 /// <summary>
 /// 运行时多语言管理器（对齐 macOS LocalizationManager 的「点分 key + 每语言 JSON + 英语兜底」模型）。
 ///
-/// - 支持语言与 macOS 一致：en / zh-Hans / zh-Hant / ja / fr / es / pt / ru，默认英语。
+/// - 支持语言与 macOS 一致：en / zh-Hans / zh-Hant / ja / fr / es / pt / ru / de，默认英语。
 /// - 字符串以内嵌资源 JSON 提供：Localization/Strings/{code}.json（扁平 key→文案）。
 /// - 缺失的 key 回退到英语，再回退到 key 本身，保证永不为空。
 /// - 实现 INotifyPropertyChanged，切换语言时通过 "Item[]" 通知，XAML 绑定即时刷新（无需重启）。
@@ -29,6 +29,7 @@ public sealed class Loc : INotifyPropertyChanged
         ("es",      "Español"),
         ("pt",      "Português"),
         ("ru",      "Русский"),
+        ("de",      "Deutsch"),
     };
 
     public const string DefaultLanguage = "en";

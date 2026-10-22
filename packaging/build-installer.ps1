@@ -5,7 +5,7 @@
 
 .DESCRIPTION
   流程：编 C++ Credential Provider → 发布三个 .NET 程序（框架依赖）→ 汇总到暂存目录
-        →（可选）签名二进制 → ISCC 编译 → （可选）签名安装包。
+        →（可选）签名二进制 → ISCC 编译（签名时连同安装包、卸载程序一起签）。
 
   为什么是框架依赖而非自包含：安装包只有几 MB，代价是目标机需装 .NET 8 Desktop
   Runtime。immurok.iss 的 InitializeSetup 会在安装前检测并给出下载指引，不会让用户
@@ -33,13 +33,27 @@
   进程内加载，所以 ARM64 机器必须用原生 ARM64 的 CP。
   编 ARM64 需要在 Visual Studio Installer 里勾选 C++ 的 ARM64/ARM64EC 生成工具组件。
 
+.PARAMETER ArtifactSigningEndpoint / ArtifactSigningAccount / ArtifactSigningProfile
+  三者都给时用 Azure Artifact Signing（原 Trusted Signing）签名：证书与私钥全由微软托管，
+  signtool 通过 dlib 插件调服务签（CI 用这条）。dlib 首次使用时自动从 NuGet 下到
+  packaging\.tools；signtool 取本机 Windows SDK 里最新的 x64 版（或用 -SignToolPath 指定）。
+  身份走 DefaultAzureCredential：CI 里是 azure/login 的 OIDC 会话，本机是 az login。
+
+.PARAMETER KeyVaultUrl / KeyVaultCert
+  两者都给时用 AzureSignTool 签名，证书私钥在 Azure Key Vault 的 HSM 里（自购 OV 证书时用）。
+  需要先装 AzureSignTool： dotnet tool install --global AzureSignTool
+
 .PARAMETER SignToolPath / CertSubject
-  两者都给时对 exe/dll 与安装包做签名；留空则跳过（当前无证书）。
+  两者都给时用 signtool 按证书主体签名（证书在本机证书库 / U 盾里）。
+
+  三种方式都不给则跳过签名。签名范围：自家 exe/dll、安装包、卸载程序。
 
 .EXAMPLE
   .\packaging\build-installer.ps1                 # x64 + arm64 两个包
   .\packaging\build-installer.ps1 -Arch x64       # 只出 x64
   .\packaging\build-installer.ps1 -Configuration Debug
+  .\packaging\build-installer.ps1 -ArtifactSigningEndpoint https://jpe.codesigning.azure.net `
+      -ArtifactSigningAccount immurok -ArtifactSigningProfile immurok-public
 #>
 param(
     [ValidateSet('Debug','Release')]
@@ -48,8 +62,16 @@ param(
     # 必须与 LogonUI 的架构一致）。默认两个都出。
     [ValidateSet('x64','arm64','all')]
     [string]$Arch = 'all',
+    [string]$ArtifactSigningEndpoint = '',
+    [string]$ArtifactSigningAccount  = '',
+    [string]$ArtifactSigningProfile  = '',
+    [string]$KeyVaultUrl  = '',
+    [string]$KeyVaultCert = '',
     [string]$SignToolPath = '',
     [string]$CertSubject  = '',
+    # 必须带时间戳：否则证书一过期，已发布的安装包签名跟着失效（Artifact Signing 的证书
+    # 只有 3 天有效期）。留空按签名方式取默认：Artifact Signing 用微软的，其余用 DigiCert 的。
+    [string]$TimestampUrl = '',
     # 自动定位失败时手工指定 ISCC.exe 完整路径
     [string]$IsccPath     = '',
     # 版本号。留空则取 Directory.Build.props 的 <Version>；CI 里由 tag 传入，
@@ -169,13 +191,105 @@ function Test-Arm64Toolset {
     return $false
 }
 
-function Invoke-Sign([string[]]$targets) {
-    if (-not $SignToolPath -or -not $CertSubject) { return }
+# ---- 签名方式（先定下来，缺工具就立刻报错，不要编译完才发现）----
+# $signExe + $signArgs 后面接文件路径就是完整命令；二进制由 Invoke-Sign 直接调，
+# 安装包与卸载程序交给 Inno 的 SignTool 调（见下面 ISCC 一步）。
+$signExe  = $null
+$signArgs = @()
+
+# Artifact Signing 要求 Windows SDK 10.0.22621 及以上的 x64 signtool（20348 那版与 dlib 不兼容）
+function Find-SignTool {
+    if ($SignToolPath) {
+        if (Test-Path $SignToolPath) { return $SignToolPath }
+        throw "signtool 不存在: $SignToolPath"
+    }
+    $kits = "${env:ProgramFiles(x86)}\Windows Kits\10\bin"
+    $best = Get-ChildItem $kits -Directory -Filter '10.0.*' -ErrorAction SilentlyContinue |
+            Where-Object { [version]$_.Name -ge [version]'10.0.22621.0' -and
+                           (Test-Path (Join-Path $_.FullName 'x64\signtool.exe')) } |
+            Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
+    if (-not $best) { throw "未找到 Windows SDK 10.0.22621 及以上的 signtool.exe（查过 $kits），可用 -SignToolPath 指定。" }
+    return (Join-Path $best.FullName 'x64\signtool.exe')
+}
+
+# dlib 不随 Windows SDK 提供，从 NuGet 取 Microsoft.ArtifactSigning.Client（.nupkg 就是 zip），
+# 解到 packaging\.tools 下按版本缓存。包里自带 VC++ 运行库，另需本机有 .NET 8 运行时。
+function Get-ArtifactSigningDlib {
+    $toolsDir = Join-Path $pkgDir '.tools'
+    $cached = Get-ChildItem $toolsDir -Directory -Filter 'artifact-signing-client-*' -ErrorAction SilentlyContinue |
+              Sort-Object Name -Descending | Select-Object -First 1
+    if ($cached) {
+        $dll = Join-Path $cached.FullName 'bin\x64\Azure.CodeSigning.Dlib.dll'
+        if (Test-Path $dll) { return $dll }
+    }
+    Info "==> 下载 Artifact Signing dlib ..."
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    $base = 'https://api.nuget.org/v3-flatcontainer/microsoft.artifactsigning.client'
+    $ver  = (Invoke-RestMethod "$base/index.json").versions | Select-Object -Last 1
+    $dest = Join-Path $toolsDir "artifact-signing-client-$ver"
+    $zip  = Join-Path $toolsDir "artifact-signing-client-$ver.zip"
+    New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null
+    Invoke-WebRequest "$base/$ver/microsoft.artifactsigning.client.$ver.nupkg" -OutFile $zip -UseBasicParsing
+    if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [IO.Compression.ZipFile]::ExtractToDirectory($zip, $dest)
+    Remove-Item $zip -Force
+    $dll = Join-Path $dest 'bin\x64\Azure.CodeSigning.Dlib.dll'
+    if (-not (Test-Path $dll)) { throw "dlib 包里没有预期的文件: $dll" }
+    return $dll
+}
+
+if ($ArtifactSigningEndpoint -or $ArtifactSigningAccount -or $ArtifactSigningProfile) {
+    if (-not ($ArtifactSigningEndpoint -and $ArtifactSigningAccount -and $ArtifactSigningProfile)) {
+        throw "-ArtifactSigningEndpoint / -ArtifactSigningAccount / -ArtifactSigningProfile 必须同时给出。"
+    }
+    $signExe = Find-SignTool
+    $dlib    = Get-ArtifactSigningDlib
+    # 账户与证书配置通过 JSON 传给 dlib。ExcludeCredentials 跳过 DefaultAzureCredential 里用不上的
+    # 几种：托管标识在 GitHub runner（本身是 Azure VM）上会去探 IMDS，白等超时甚至拿错身份。
+    $meta = Join-Path $pkgDir '.tools\artifact-signing-metadata.json'
+    $json = [ordered]@{
+        Endpoint               = $ArtifactSigningEndpoint
+        CodeSigningAccountName = $ArtifactSigningAccount
+        CertificateProfileName = $ArtifactSigningProfile
+        ExcludeCredentials     = @('ManagedIdentityCredential', 'WorkloadIdentityCredential',
+                                   'SharedTokenCacheCredential', 'VisualStudioCredential',
+                                   'VisualStudioCodeCredential', 'InteractiveBrowserCredential')
+    } | ConvertTo-Json
+    [IO.File]::WriteAllText($meta, $json, (New-Object Text.UTF8Encoding $false))
+    if (-not $TimestampUrl) { $TimestampUrl = 'http://timestamp.acs.microsoft.com' }
+    $signArgs = @('sign', '/fd', 'SHA256', '/tr', $TimestampUrl, '/td', 'SHA256', '/dlib', $dlib, '/dmdf', $meta)
+} elseif ($KeyVaultUrl -or $KeyVaultCert) {
+    if (-not ($KeyVaultUrl -and $KeyVaultCert)) { throw "-KeyVaultUrl 与 -KeyVaultCert 必须同时给出。" }
+    $ast = Get-Command AzureSignTool.exe -ErrorAction SilentlyContinue
+    if (-not $ast) { throw "未找到 AzureSignTool。安装： dotnet tool install --global AzureSignTool" }
+    if (-not $TimestampUrl) { $TimestampUrl = 'http://timestamp.digicert.com' }
+    $signExe  = $ast.Source
+    $signArgs = @('sign', '-kvu', $KeyVaultUrl, '-kvc', $KeyVaultCert, '-kvm',
+                  '-tr', $TimestampUrl, '-td', 'sha256', '-fd', 'sha256')
+} elseif ($SignToolPath -and $CertSubject) {
     if (-not (Test-Path $SignToolPath)) { throw "signtool 不存在: $SignToolPath" }
+    if (-not $TimestampUrl) { $TimestampUrl = 'http://timestamp.digicert.com' }
+    $signExe  = $SignToolPath
+    $signArgs = @('sign', '/n', $CertSubject, '/fd', 'SHA256', '/tr', $TimestampUrl, '/td', 'SHA256')
+}
+if ($signExe) { Info "==> 签名: $signExe" } else { Write-Warning "未配置签名，产出的是未签名安装包（SmartScreen 会拦）。" }
+
+function Invoke-Sign([string[]]$targets) {
+    if (-not $signExe) { return }
     if (-not $targets -or $targets.Count -eq 0) { return }
     Info "    签名 $($targets.Count) 个文件 ..."
-    & $SignToolPath sign /n $CertSubject /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 @targets
+    & $signExe @signArgs @targets
     if ($LASTEXITCODE -ne 0) { throw "签名失败（退出码 $LASTEXITCODE）。" }
+}
+
+# Inno 的 /S 签名命令：$q 是引号、$f 是待签文件（Inno 自己的占位符，所以用单引号不让
+# PowerShell 展开）。带空格的参数（signtool 路径、证书主体）用 $q 包起来。
+function Get-InnoSignCommand {
+    $parts = (@($signExe) + $signArgs) | ForEach-Object {
+        if ($_ -match '\s') { '$q' + $_ + '$q' } else { $_ }
+    }
+    return ($parts -join ' ') + ' $f'
 }
 
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
@@ -257,25 +371,29 @@ Credential Provider 的 ARM64 编译失败（退出码 $LASTEXITCODE）。
     Ok "    暂存目录就绪（$fileCount 个文件）"
 
     # ---- 4.（可选）签名二进制 ----
+    # 只签自家产物（imk.exe 的托管程序集是 imk.dll）；第三方依赖保持各自原有签名
     Invoke-Sign (Get-ChildItem $stage -Include *.exe,*.dll -Recurse |
-                 Where-Object { $_.Name -like 'Immurok*' -or $_.Name -eq 'imk.exe' } |
+                 Where-Object { $_.Name -like 'Immurok*' -or $_.BaseName -eq 'imk' } |
                  ForEach-Object { $_.FullName })
 
     # ---- 5. ISCC 编译 ----
+    # 签名时由 Inno 自己调签名命令：卸载程序 unins000.exe 是 ISCC 编译期生成并压进安装包的，
+    # 事后只签 setup.exe 签不到它，装完后从「设置 → 应用」卸载时 UAC 仍显示未知发布者。
     Info "==> ISCC 编译 ($arch) ..."
-    & $iscc `
-        "/DAppVersion=$version" `
-        "/DStageDir=$stage" `
-        "/DArch=$arch" `
-        "/O$outDir" `
-        (Join-Path $pkgDir 'immurok.iss')
+    $isccArgs = @("/DAppVersion=$version", "/DStageDir=$stage", "/DArch=$arch", "/O$outDir")
+    if ($signExe) { $isccArgs += @('/DSigned=1', "/Simmurok=$(Get-InnoSignCommand)") }
+    & $iscc @isccArgs (Join-Path $pkgDir 'immurok.iss')
     if ($LASTEXITCODE -ne 0) { throw "ISCC 编译失败（$arch，退出码 $LASTEXITCODE）。" }
 
     $setup = Join-Path $outDir "immurok-$version-$arch-setup.exe"
     if (-not (Test-Path $setup)) { throw "ISCC 未产出预期文件: $setup" }
 
-    # ---- 6.（可选）签名安装包 ----
-    Invoke-Sign @($setup)
+    # ---- 6.（签名时）确认安装包签名有效，免得发出去才发现没签上 ----
+    if ($signExe) {
+        $sig = Get-AuthenticodeSignature $setup
+        if ($sig.Status -ne 'Valid') { throw "安装包签名无效（$($sig.Status)）: $setup" }
+        Ok "    已签名: $($sig.SignerCertificate.Subject)"
+    }
     $built += $setup
     Ok "    完成: $setup"
 }

@@ -1,12 +1,13 @@
 using System;
 using System.IO;
 using System.Text.Json;
+using ImmurokCommon.Git;
 
 namespace ImmurokClient.Services;
 
 /// <summary>
 /// 客户端本地设置（仅界面偏好，不含机密），存于 %AppData%\immurok\client.json。
-/// 目前只有语言选择。
+/// 语言、自启初始化标记、横幅折叠、SSH agent 接管前的 git 配置原值。
 /// </summary>
 public static class ClientSettings
 {
@@ -15,6 +16,8 @@ public static class ClientSettings
         public string? Language { get; set; }
         public bool AutoStartInitialized { get; set; }
         public bool SecurityBannerCollapsed { get; set; }
+        /// <summary>开启 SSH agent 时 git 两个键的原值；null = 没接管过（或已还原）。</summary>
+        public GitSshPrev? GitSshPrev { get; set; }
     }
 
     private static string Dir =>
@@ -64,5 +67,12 @@ public static class ClientSettings
     {
         get => _data.AutoStartInitialized;
         set { _data.AutoStartInitialized = value; Save(); }
+    }
+
+    /// <summary>SSH agent 接管前 git 的 core.sshCommand / gpg.ssh.program 原值（<see cref="SshAgentSwitch"/> 用）。</summary>
+    public static GitSshPrev? GitSshPrev
+    {
+        get => _data.GitSshPrev;
+        set { _data.GitSshPrev = value; Save(); }
     }
 }

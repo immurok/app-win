@@ -25,6 +25,7 @@ public sealed class Worker : BackgroundService
     private readonly ScreenLocker _locker;
     private readonly CredentialStore _creds;
     private readonly SshAgentServer _sshAgent;
+    private readonly SshAgentFeature _sshFeature;
     private readonly CliServer _cli;
     private readonly AppSettings _settings;
     private readonly FpInjectionSignal _injectionSignal;
@@ -50,6 +51,7 @@ public sealed class Worker : BackgroundService
         ScreenLocker locker,
         CredentialStore creds,
         SshAgentServer sshAgent,
+        SshAgentFeature sshFeature,
         CliServer cli,
         AppSettings settings,
         FpInjectionSignal injectionSignal,
@@ -64,6 +66,7 @@ public sealed class Worker : BackgroundService
         _locker = locker;
         _creds = creds;
         _sshAgent = sshAgent;
+        _sshFeature = sshFeature;
         _cli = cli;
         _settings = settings;
         _injectionSignal = injectionSignal;
@@ -83,9 +86,8 @@ public sealed class Worker : BackgroundService
         _pipe.Start();
         _ble.StartScan();
 
-        // SSH agent：若已启用则随服务启动。
-        if (_settings.SshAgentEnabled)
-            _sshAgent.Start();
+        // SSH agent：若已启用则随服务启动（含重新接管系统 ssh-agent）。
+        _sshFeature.StartIfEnabled();
 
         // imk CLI 服务：随服务常驻启动。
         _cli.Start();

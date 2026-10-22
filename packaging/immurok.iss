@@ -66,6 +66,11 @@ UninstallDisplayName={#AppName} {#AppVersion} ({#Arch})
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
+; 签名：build-installer.ps1 配了证书时传 /DSigned=1 和 /Simmurok=<签名命令>，
+; Inno 用它签安装包和卸载程序（SignedUninstaller 随 SignTool 默认开启）。未传则出未签名包。
+#ifdef Signed
+SignTool=immurok
+#endif
 
 [Dirs]
 ; 数据目录只给 SYSTEM / Administrators（Inno 的 Permissions 只追加 ACE，不断开 ProgramData 的继承；

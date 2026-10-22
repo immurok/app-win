@@ -16,7 +16,7 @@ public static class IpcProtocol
     public const string Slot        = "SLOT";          // SLOT:STATUS | SLOT:CLEAROWN | SLOT:CLEAR:<n>（双主机）
     public const string Pass        = "PASS";          // PASS:STATUS | PASS:SET:<b64user>:<b64pass> | PASS:CLEAR
     public const string Key         = "KEY";           // KEY:LIST:<cat> | KEY:OTP:<idx> | KEY:DELETE:<cat>:<idx> | KEY:SSHPUB:<idx>
-    public const string SshAgent    = "SSHAGENT";      // SSHAGENT:STATUS -> OK:ON|OFF ; SSHAGENT:ON|OFF -> OK
+    public const string SshAgent    = "SSHAGENT";      // SSHAGENT:STATUS -> OK:ON|OFF ; SSHAGENT:ON -> OK:TAKEN|ABSENT|TAKEOVER_FAILED|CONTENDED ; SSHAGENT:OFF -> OK:RESTORED|NONE|RESTORE_FAILED
     public const string AgentApprove = "AGENT_APPROVE"; // 本期暂不实现
     /// <summary>取消进行中的指纹门（认证弹窗点「取消」时用），让设备立刻停止闪灯等待。-&gt; OK</summary>
     public const string CancelGate  = "CANCELGATE";

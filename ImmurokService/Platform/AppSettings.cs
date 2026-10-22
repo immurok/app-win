@@ -1,10 +1,11 @@
 using System.Text.Json;
+using ImmurokService.Ssh;
 using Microsoft.Extensions.Logging;
 
 namespace ImmurokService.Platform;
 
 /// <summary>服务设置持久化（%ProgramData%\immurok\settings.json）。</summary>
-public sealed class AppSettings
+public sealed class AppSettings : ISystemSshAgentPrevStore
 {
     /// <summary>
     /// 落盘结构。功能开关一律用 <c>bool?</c>：老版本的 settings.json 里没有这些字段，
@@ -18,6 +19,8 @@ public sealed class AppSettings
         public bool? LockEnabled { get; set; }
         public bool? ImkAgentEnabled { get; set; }
         public bool? OtpEnabled { get; set; }
+        /// <summary>开启 SSH agent 时系统 ssh-agent 服务的原状态；null = 没接管过（或已还原）。</summary>
+        public SystemSshAgentPrev? SystemSshAgentPrev { get; set; }
     }
 
     private readonly ILogger<AppSettings> _log;
@@ -34,11 +37,18 @@ public sealed class AppSettings
         Load();
     }
 
-    /// <summary>SSH agent（默认关：需要用户显式启用，会接管 SSH_AUTH_SOCK）。</summary>
+    /// <summary>SSH agent（默认关：需要用户显式启用，会接管系统 ssh-agent 的管道名）。</summary>
     public bool SshAgentEnabled
     {
         get => _data.SshAgentEnabled;
         set { _data.SshAgentEnabled = value; Save(); }
+    }
+
+    /// <summary>接管系统 ssh-agent 前的状态（<see cref="SystemSshAgent"/> 用）。</summary>
+    public SystemSshAgentPrev? Prev
+    {
+        get => _data.SystemSshAgentPrev;
+        set { _data.SystemSshAgentPrev = value; Save(); }
     }
 
     /// <summary>指纹解锁屏幕（默认开：这是产品主功能）。</summary>

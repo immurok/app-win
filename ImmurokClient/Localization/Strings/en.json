@@ -336,7 +336,7 @@
   "setup.pass.set": "Set password",
   "setup.ssh.desc": "When enabled, ssh / git sign with the device's SSH private key (each signature needs a fingerprint touch).",
   "setup.ssh.enable": "Enable SSH agent",
-  "setup.ssh.note": "First disable the built-in Windows ssh-agent (admin PowerShell): Stop-Service ssh-agent; Set-Service ssh-agent -StartupType Disabled",
+  "setup.ssh.note": "Turning this on stops the built-in Windows ssh-agent and points git at the native OpenSSH; turning it off puts both back.",
   "setup.title": "Setup",
   "security.banner.ok": "Strong IPC protection is active",
   "security.banner.cp_squatted": "Credential pipe hijacked — fingerprint unlock paused",
@@ -360,5 +360,18 @@
   "status.subtitle": "Whether each component is ready",
   "status.title": "Status",
   "tray.exit": "Exit",
-  "tray.open": "Open settings"
+  "tray.open": "Open settings",
+  "msg.ssh.working": "Applying…",
+  "msg.ssh.svc.taken": "Built-in Windows ssh-agent stopped and disabled.",
+  "msg.ssh.svc.absent": "No built-in ssh-agent service found; nothing to take over.",
+  "msg.ssh.svc.takeover_failed": "Could not disable the built-in ssh-agent, but the agent pipe is up.",
+  "msg.ssh.svc.contended": "Pipe \\\\.\\pipe\\openssh-ssh-agent is in use by another program. Stop it (for the Windows service: Stop-Service ssh-agent), then toggle off and on again.",
+  "msg.ssh.svc.restored": "Built-in Windows ssh-agent restored.",
+  "msg.ssh.svc.none": "Disabled.",
+  "msg.ssh.svc.restore_failed": "Could not restore the built-in ssh-agent; toggle off again to retry.",
+  "msg.ssh.git.configured": "git now uses native OpenSSH (core.sshCommand, gpg.ssh.program).",
+  "msg.ssh.git.restored": "git settings restored.",
+  "msg.ssh.git.missing": "git not found, git settings skipped.",
+  "msg.ssh.git.failed": "Failed to write git settings.",
+  "msg.ssh.git.no_native": "Native OpenSSH (System32\\OpenSSH) not found; git settings left unchanged. Install the OpenSSH Client from Optional Features."
 }

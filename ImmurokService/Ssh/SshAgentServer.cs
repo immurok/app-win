@@ -31,6 +31,8 @@ public sealed class SshAgentServer : IAsyncDisposable
     private CancellationTokenSource? _cts;
     private Task? _acceptLoop;
     private bool _warnedNoOwner;
+    /// <summary>最近一次建管道尝试的结果：0 = 进行中 / 未知，1 = 已监听，-1 = 管道名被占。</summary>
+    private volatile int _bindState;
 
     /// <summary>第一个实例创建失败（管道名被占，通常是 Windows 内置 ssh-agent 没停）时为 true。</summary>
     public bool Contended { get; private set; }
@@ -52,6 +54,7 @@ public sealed class SshAgentServer : IAsyncDisposable
     {
         if (_acceptLoop is not null) return;
         _cts = new CancellationTokenSource();
+        _bindState = 0;
         _acceptLoop = Task.Run(() => AcceptLoopAsync(_cts.Token));
         _ = RefreshIdentitiesAsync();
         _log.LogInformation("SSH agent 已启动: \\\\.\\pipe\\{Pipe}", PipeName);
@@ -65,6 +68,27 @@ public sealed class SshAgentServer : IAsyncDisposable
         _acceptLoop = null;
         _cts?.Dispose();
         _log.LogInformation("SSH agent 已停止");
+    }
+
+    /// <summary>
+    /// 等一次建管道尝试出结果：true = 已监听，false = 管道名被占（<see cref="Contended"/>）或超时。
+    /// 给一键开启的应答用，让客户端能立刻告诉用户是否真的接管成功。若 agent 早已在跑且处于
+    /// 被占重试中（每 2s 一次），接管系统 ssh-agent 后下一次重试会把状态翻成已监听，这里等得到。
+    /// </summary>
+    public async Task<bool> WaitBoundAsync(TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        // 已经是「被占」时，等它下一次重试的结论，不拿旧结论回答。
+        bool skipStale = _bindState == -1;
+        while (DateTime.UtcNow < deadline)
+        {
+            int st = _bindState;
+            if (st == 1) return true;
+            if (st == -1 && !skipStale) return false;
+            if (st != -1) skipStale = false;
+            await Task.Delay(100);
+        }
+        return _bindState == 1;
     }
 
     /// <summary>刷新设备 SSH 身份缓存。</summary>
@@ -91,9 +115,11 @@ public sealed class SshAgentServer : IAsyncDisposable
             NamedPipeServerStream? pipe = null;
             try
             {
+                _bindState = 0;
                 pipe = CreatePipe(first);
                 first = false;
                 Contended = false;
+                _bindState = 1;
                 await pipe.WaitForConnectionAsync(ct).ConfigureAwait(false);
                 _ = HandleClientAsync(pipe, ct);
             }
@@ -102,6 +128,7 @@ public sealed class SshAgentServer : IAsyncDisposable
             {
                 // 管道名被占用（Windows 内置 ssh-agent 未停）等。不静默，Contended 供状态页。
                 Contended = true;
+                _bindState = -1;
                 _log.LogError(ex, "SSH agent 管道创建失败（是否未停用 Windows ssh-agent 服务？）");
                 pipe?.Dispose();
                 await Task.Delay(2000, ct).ContinueWith(_ => { }, CancellationToken.None);

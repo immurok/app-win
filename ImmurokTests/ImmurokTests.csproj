@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <!-- 允许在 macOS/Linux 上编译并运行纯逻辑测试（不触碰 WPF / WinRT 的类型）。 -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <!-- 测试宿主跟随本机架构（Directory.Build.props 把产品程序集钉在 x64，纯 IL 程序集在 arm64 也能加载）。 -->
+    <PlatformTarget>AnyCPU</PlatformTarget>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 被测程序集单独按 AnyCPU 编到 bin/TestAnyCPU（独立配置名 = 独立 obj/bin，不和常规 x64 构建互相覆盖），否则 arm64 Mac 上加载 x64 标记的 IL 程序集会失败。 -->
+    <ProjectReference Include="..\ImmurokService\ImmurokService.csproj" AdditionalProperties="PlatformTarget=AnyCPU;Configuration=TestAnyCPU" />
+    <ProjectReference Include="..\ImmurokCommon\ImmurokCommon.csproj" AdditionalProperties="PlatformTarget=AnyCPU;Configuration=TestAnyCPU" />
+  </ItemGroup>
+
+</Project>

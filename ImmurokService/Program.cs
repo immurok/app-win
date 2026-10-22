@@ -88,6 +88,11 @@ builder.Services.AddSingleton<ScreenUnlocker>();
 builder.Services.AddSingleton<ScreenLocker>();
 builder.Services.AddSingleton<AppSettings>();
 builder.Services.AddSingleton<ImmurokService.Ssh.SshAgentServer>();
+// 一键开关 SSH agent：接管 / 还原 Windows 内置 ssh-agent 服务（抢同一个管道名）。
+builder.Services.AddSingleton<ImmurokService.Ssh.IWindowsServiceControl>(new ImmurokService.Ssh.WindowsServiceControl("ssh-agent"));
+builder.Services.AddSingleton<ImmurokService.Ssh.ISystemSshAgentPrevStore>(sp => sp.GetRequiredService<AppSettings>());
+builder.Services.AddSingleton<ImmurokService.Ssh.SystemSshAgent>();
+builder.Services.AddSingleton<ImmurokService.Ssh.SshAgentFeature>();
 builder.Services.AddSingleton<CommandHandlers>();
 builder.Services.AddSingleton<PipeServer>();
 builder.Services.AddSingleton<CliServer>();

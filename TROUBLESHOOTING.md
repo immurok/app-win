@@ -4,13 +4,35 @@
 
 ## SSH agent（用设备密钥让 ssh / git 签名）
 
+### 一键开关做了什么
+
+客户端「安装配置」页或「功能」页打开「SSH agent」，两边各做一半，关掉时按记录还原：
+
+| 谁 | 开启 | 关闭 |
+|----|------|------|
+| Service（LocalSystem） | 停掉并禁用 Windows 内置 `ssh-agent` 服务（记下原启动类型 / 是否在跑），起 `\\.\pipe\openssh-ssh-agent` | 停管道，把内置服务的启动类型改回去，原来在跑就再拉起来 |
+| 客户端（当前用户） | `git config --global core.sshCommand` → `C:/Windows/System32/OpenSSH/ssh.exe`，`gpg.ssh.program` → 原生 `ssh-keygen.exe`（记下原值） | 两个键改回原值，原来没有就 `--unset` |
+
+记录只写一次（重复开启不覆盖），还原失败保留记录、再关一次即重试。记录位置：服务侧 `%ProgramData%\immurok\settings.json`，客户端 `%AppData%\immurok\client.json`。
+
+开关旁的提示会直接说结果：`已停用 Windows 内置 ssh-agent` / `git 已指向原生 OpenSSH`。下面的手动步骤只在提示报错时才需要。
+
+### ⚠️ 提示「管道被其他程序占用」
+
+不是内置服务（那个已经被自动停掉）就是别的 agent（1Password、gpg-agent 的 win32-openssh 桥、KeeAgent 等）占着 `\\.\pipe\openssh-ssh-agent`。停掉它再关开一次。若确认是内置服务没停成功（服务日志 `接管系统 ssh-agent 失败`），管理员 PowerShell：
+
+```powershell
+Stop-Service ssh-agent
+Set-Service ssh-agent -StartupType Disabled
+```
+
 ### ✅ git 走不通、ssh 却能用 —— git 用了自带的 MSYS ssh
 
 **现象**：`ssh -v` 能用设备钥匙签名（要按指纹、登录成功），但 `git pull/push` 却回落到问密码。
 
 **原因**：Git for Windows 自带一个 MSYS/Cygwin 版 ssh（`C:\Program Files\Git\usr\bin\ssh.exe`），它**不认** Windows 命名管道 `\\.\pipe\openssh-ssh-agent`，只看 `SSH_AUTH_SOCK` 指向的 Cygwin 套接字——所以看不到我们的 agent。原生 `ssh.exe`（`C:\Windows\System32\OpenSSH\ssh.exe`）才走命名管道。
 
-**修复（已验证）**：让 git 改用原生 OpenSSH：
+一键开关已经替你改了 `core.sshCommand`；提示里出现「未找到 git」（开开关时 git 还没装）或「未找到原生 OpenSSH」时手动补：
 
 ```powershell
 git config --global core.sshCommand "C:/Windows/System32/OpenSSH/ssh.exe"
@@ -18,16 +40,15 @@ git config --global core.sshCommand "C:/Windows/System32/OpenSSH/ssh.exe"
 
 之后 `git` 与手动 `ssh` 一致，走命名管道 → 设备钥匙 → 触发指纹。
 
-### 启用前提：停用 Windows 内置 ssh-agent 服务
+### git commit 签名（`gpg.format = ssh`）
 
-内置 `ssh-agent` 服务占用同一个管道名，不停掉我们的 agent 建不了管道（日志会报 `SSH agent 管道创建失败`）。
+同样走 agent 的 SIGN_REQUEST，一键开关已把 `gpg.ssh.program` 指向原生 `ssh-keygen.exe`（MSYS 版同样不认命名管道）。剩下的按 git 常规配置：
 
 ```powershell
-Stop-Service ssh-agent
-Set-Service ssh-agent -StartupType Disabled
+git config --global gpg.format ssh
+git config --global user.signingkey "ecdsa-sha2-nistp256 AAAA..."   # 密钥页复制的设备公钥
+git config --global commit.gpgsign true
 ```
-
-然后在客户端「安装配置」页打开「启用 SSH agent」，重启 Service。
 
 ### 验证与端口
 

@@ -101,6 +101,21 @@ public partial class FeaturesPage : Page
         sw.IsEnabled = false;
         try
         {
+            // SSH agent 多一半客户端工作（接管系统 agent 的结果说明 + git 指向原生 OpenSSH），走专用开关。
+            if (name == IpcProtocol.FeatureSsh)
+            {
+                StatusText.Text = T("msg.ssh.working");
+                var res = await SshAgentSwitch.SetAsync(on);
+                StatusText.Text = SshAgentSwitch.Describe(res, on);
+                if (!res.Ok)
+                {
+                    _loading = true;
+                    sw.IsChecked = !on;
+                    _loading = false;
+                }
+                return;
+            }
+
             string? r = await AppServices.Pipe.FeatureSetAsync(name, on);
             if (r == IpcProtocol.Ok)
             {

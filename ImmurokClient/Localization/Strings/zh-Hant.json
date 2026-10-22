@@ -336,7 +336,7 @@
   "setup.pass.set": "設定密碼",
   "setup.ssh.desc": "開啟後，ssh / git 使用裝置裡的 SSH 私鑰簽章（每次簽章需觸碰指紋）。",
   "setup.ssh.enable": "啟用 SSH agent",
-  "setup.ssh.note": "需先停用 Windows 內建 ssh-agent 服務（系統管理員 PowerShell）：Stop-Service ssh-agent; Set-Service ssh-agent -StartupType Disabled",
+  "setup.ssh.note": "開啟時自動停用 Windows 內建 ssh-agent 並讓 git 改用原生 OpenSSH，關閉時一併還原。",
   "setup.title": "安裝設定",
   "security.banner.ok": "IPC 加固已生效",
   "security.banner.cp_squatted": "憑據管道被佔用，指紋解鎖已暫停",
@@ -360,5 +360,18 @@
   "status.subtitle": "各環節是否就緒",
   "status.title": "狀態",
   "tray.exit": "結束",
-  "tray.open": "開啟設定"
+  "tray.open": "開啟設定",
+  "msg.ssh.working": "套用中…",
+  "msg.ssh.svc.taken": "已停用 Windows 內建 ssh-agent。",
+  "msg.ssh.svc.absent": "系統沒有內建 ssh-agent 服務，無需接管。",
+  "msg.ssh.svc.takeover_failed": "停用內建 ssh-agent 失敗，但 agent 管道已建立。",
+  "msg.ssh.svc.contended": "管道 \\\\.\\pipe\\openssh-ssh-agent 被其他程式佔用。請先停掉它（若是 Windows 服務：Stop-Service ssh-agent），再關開一次。",
+  "msg.ssh.svc.restored": "已還原 Windows 內建 ssh-agent。",
+  "msg.ssh.svc.none": "已停用。",
+  "msg.ssh.svc.restore_failed": "還原內建 ssh-agent 失敗，可再關一次重試。",
+  "msg.ssh.git.configured": "git 已改用原生 OpenSSH（core.sshCommand、gpg.ssh.program）。",
+  "msg.ssh.git.restored": "git 設定已還原。",
+  "msg.ssh.git.missing": "找不到 git，略過 git 設定。",
+  "msg.ssh.git.failed": "寫入 git 設定失敗。",
+  "msg.ssh.git.no_native": "找不到 Windows 原生 OpenSSH（System32\\OpenSSH），git 設定未改。可在「選用功能」安裝 OpenSSH 用戶端。"
 }

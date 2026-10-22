@@ -15,6 +15,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ImmurokConsolePrompt", "Imm
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ImmurokCli", "ImmurokCli\ImmurokCli.csproj", "{7A2E1C4D-3B5F-4A6E-9C8D-1F2E3A4B5C6D}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ImmurokTests", "ImmurokTests\ImmurokTests.csproj", "{5D1E7F3A-9C2B-4E8D-A6F1-2B3C4D5E6F70}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -45,6 +47,10 @@ Global
 		{7A2E1C4D-3B5F-4A6E-9C8D-1F2E3A4B5C6D}.Debug|x64.Build.0 = Debug|x64
 		{7A2E1C4D-3B5F-4A6E-9C8D-1F2E3A4B5C6D}.Release|x64.ActiveCfg = Release|x64
 		{7A2E1C4D-3B5F-4A6E-9C8D-1F2E3A4B5C6D}.Release|x64.Build.0 = Release|x64
+		{5D1E7F3A-9C2B-4E8D-A6F1-2B3C4D5E6F70}.Debug|x64.ActiveCfg = Debug|x64
+		{5D1E7F3A-9C2B-4E8D-A6F1-2B3C4D5E6F70}.Debug|x64.Build.0 = Debug|x64
+		{5D1E7F3A-9C2B-4E8D-A6F1-2B3C4D5E6F70}.Release|x64.ActiveCfg = Release|x64
+		{5D1E7F3A-9C2B-4E8D-A6F1-2B3C4D5E6F70}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
