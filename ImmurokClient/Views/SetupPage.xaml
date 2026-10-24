@@ -10,6 +10,19 @@
             <TextBlock Text="{loc:Tr nav.setup}" FontSize="28" FontWeight="Bold" Margin="0,0,0,2" />
             <TextBlock Text="{loc:Tr setup.pass}" Opacity="0.6" Margin="0,0,0,20" />
 
+            <!-- 设置向导：首启自动弹出，之后从这里或托盘菜单随时再开 -->
+            <ui:Card Margin="0,0,0,14" Padding="18">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                        <ui:SymbolIcon Foreground="{DynamicResource TextFillColorPrimaryBrush}" Symbol="HatGraduation24" FontSize="18" Margin="0,0,8,0" />
+                        <TextBlock Text="{loc:Tr setup.wizard}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <TextBlock Text="{loc:Tr setup.wizard.desc}" Opacity="0.6" FontSize="12" Margin="0,0,0,10" TextWrapping="Wrap" />
+                    <ui:Button Content="{loc:Tr setup.wizard.open}" Icon="{ui:SymbolIcon HatGraduation24}"
+                               Appearance="Secondary" Click="OnOpenWizardClick" />
+                </StackPanel>
+            </ui:Card>
+
             <!-- 语言 -->
             <ui:Card Margin="0,0,0,14" Padding="18">
                 <StackPanel>

@@ -3,7 +3,7 @@
 .SYNOPSIS
   编译 immurok Windows 版全部组件（Service / Client / Common / ConsolePrompt + C++ Credential Provider）。
 .NOTES
-  需已安装 Visual Studio 2022（含"使用 C++ 的桌面开发"与 .NET 8 SDK）。
+  需已安装 Visual Studio 2022（含"使用 C++ 的桌面开发"与 .NET 10 SDK）。
 
   为什么不对整个 .sln 跑 `dotnet build`：
     解决方案里含 C++ 的 .vcxproj，dotnet CLI 无法导入 Microsoft.Cpp.Default.props（报 MSB4278），

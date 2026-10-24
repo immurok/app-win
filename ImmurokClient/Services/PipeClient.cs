@@ -48,6 +48,10 @@ public sealed class PipeClient
     public Task<string?> InfoAsync(CancellationToken ct = default)
         => SendAsync(IpcProtocol.Info, ct: ct);
 
+    /// <summary>OK:&lt;interval&gt;:&lt;latency&gt;:&lt;timeout&gt;（BLE 原生单位）。</summary>
+    public Task<string?> ConnParamsAsync(CancellationToken ct = default)
+        => SendAsync(IpcProtocol.ConnParams, ct: ct);
+
     /// <summary>流式 OTA 推送：发整个 .imfw（base64），回调百分比，返回终态帧。</summary>
     public async Task<string> OtaPushStreamAsync(byte[] imfw, Action<int> onPercent, CancellationToken ct = default)
     {

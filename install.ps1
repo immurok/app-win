@@ -14,7 +14,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
-$tfm  = 'net8.0-windows10.0.19041.0'
+$tfm  = 'net10.0-windows10.0.19041.0'
 
 Write-Host "==> 部署到 $InstallDir ..." -ForegroundColor Cyan
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null

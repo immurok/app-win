@@ -17,7 +17,7 @@
 ;    并始终保留密码登录作为后备。
 
 #ifndef AppVersion
-  #define AppVersion "0.5.0"
+  #define AppVersion "0.6.0"
 #endif
 #ifndef StageDir
   #define StageDir "stage"
@@ -25,6 +25,11 @@
 ; Arch：x64 或 arm64。由 build-installer.ps1 用 /DArch=... 传入。
 #ifndef Arch
   #define Arch "x64"
+#endif
+; .NET Desktop Runtime：build-installer.ps1 从微软 release metadata 取最新补丁版，下载校验后
+; 用 /D 传入 URL 与 SHA-256。没有默认值 —— 漏传宁可编译失败，也不发一个下载地址为空的包。
+#ifndef DotNetUrl
+  #error DotNetUrl/DotNetSha256/DotNetVersion/DotNetChannel 未定义，请用 build-installer.ps1 编译
 #endif
 
 ; 两个架构各出一个安装包，彼此互斥安装：
@@ -156,11 +161,16 @@ Filename: "{sys}\sc.exe"; Parameters: "delete {#ServiceName}"; Flags: runhidden;
 const
   EnvKey = 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment';
 
-{ ---- .NET 8 Desktop Runtime 检测 ----
-  三个程序都是框架依赖发布，缺运行时装上也起不来，所以安装前就拦下。
-  不查注册表（各版本的键名布局有出入，容易误判），直接看共享框架目录下有没有 8.x：
-  框架依赖应用默认的 roll-forward 只在同一主版本内滚动，装了 9 或 10 也顶不了 8。 }
-function HasDotNet8Desktop(): Boolean;
+var
+  DownloadPage: TDownloadWizardPage;
+
+{ ---- .NET Desktop Runtime 检测 ----
+  三个程序都是框架依赖发布，缺运行时装上也起不来，所以缺了就在 PrepareToInstall 里先装。
+  不查注册表（各版本的键名布局有出入，容易误判），直接看共享框架目录下有没有 {#DotNetChannel}.x：
+  框架依赖应用默认的 roll-forward 只在同一主版本内滚动，装了别的主版本顶不了。
+  commonpf64 下的 dotnet 目录在两种包上都对：x64 包只装 x64 机器，arm64 包装的是原生 ARM64 运行时，
+  两者都落在 Program Files\dotnet（ARM64 机器上的 x64 运行时才会去 dotnet\x64）。 }
+function HasDotNetDesktop(): Boolean;
 var
   Root: String;
   FR: TFindRec;
@@ -174,7 +184,8 @@ begin
     try
       repeat
         { 用 DirExists 判断目录，避免依赖 FILE_ATTRIBUTE_* 常量是否预定义 }
-        if (Copy(FR.Name, 1, 2) = '8.') and DirExists(Root + '\' + FR.Name) then
+        if (Copy(FR.Name, 1, Length('{#DotNetChannel}.')) = '{#DotNetChannel}.') and
+           DirExists(Root + '\' + FR.Name) then
         begin
           Result := True;
           Exit;
@@ -187,8 +198,6 @@ begin
 end;
 
 function InitializeSetup(): Boolean;
-var
-  ErrorCode: Integer;
 begin
   Result := True;
 
@@ -212,15 +221,71 @@ begin
     Exit;
   end;
 #endif
+end;
 
-  if not HasDotNet8Desktop() then
-  begin
-    if MsgBox('immurok requires the .NET 8 Desktop Runtime (x64), which was not found.' + #13#10#13#10 +
-              'Open the download page now? Install it, then run this installer again.',
-              mbConfirmation, MB_YESNO) = IDYES then
-      ShellExec('open', 'https://dotnet.microsoft.com/download/dotnet/8.0',
-                '', '', SW_SHOWNORMAL, ewNoWait, ErrorCode);
-    Result := False;
+procedure InitializeWizard();
+begin
+  DownloadPage := CreateDownloadPage('Installing .NET Desktop Runtime',
+    'immurok needs the .NET {#DotNetChannel} Desktop Runtime ({#Arch}), which is not installed. ' +
+    'Setup is downloading it from Microsoft.', nil);
+end;
+
+{ ---- 缺运行时：下载 → 静默安装 → 复查，全过才继续 ----
+  放在 PrepareToInstall 而不是 NextButtonClick(wpReady)：静默安装（/VERYSILENT）也一定会走到这里。
+  返回非空字符串 = 中止安装并显示原因，此时服务还没停、文件还没动，旧版本照常可用。
+  下载按打包时钉死的 SHA-256 校验（Inno 自己做，不匹配就抛异常），所以以管理员身份执行它是安全的。 }
+function EnsureDotNetDesktop(): String;
+var
+  Setup: String;
+  ResultCode: Integer;
+begin
+  Result := '';
+  if HasDotNetDesktop() then
+    Exit;
+
+  Log('.NET {#DotNetChannel} Desktop Runtime not found; downloading {#DotNetVersion} from {#DotNetUrl}');
+  DownloadPage.Clear;
+  DownloadPage.Add('{#DotNetUrl}', 'dotnet-desktop-runtime-setup.exe', '{#DotNetSha256}');
+  DownloadPage.Show;
+  try
+    try
+      DownloadPage.Download;
+    except
+      if DownloadPage.AbortedByUser then
+        Result := 'The .NET Desktop Runtime download was cancelled.'
+      else
+        Result := 'Could not download the .NET {#DotNetChannel} Desktop Runtime: ' + GetExceptionMessage;
+      Result := Result + #13#10#13#10 +
+        'Check your internet connection and run Setup again, or install the runtime manually from ' +
+        'https://dotnet.microsoft.com/download/dotnet/{#DotNetChannel} and then run Setup again.';
+      Exit;
+    end;
+
+    DownloadPage.SetText('Installing .NET {#DotNetVersion} Desktop Runtime...', '');
+    DownloadPage.ProgressBar.Style := npbstMarquee;
+    Setup := ExpandConstant('{tmp}\dotnet-desktop-runtime-setup.exe');
+    if not Exec(Setup, '/install /quiet /norestart', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    begin
+      Result := 'Could not start the .NET Desktop Runtime installer: ' + SysErrorMessage(ResultCode);
+      Exit;
+    end;
+    Log(Format('.NET Desktop Runtime installer exited with %d', [ResultCode]));
+    { 0 成功；3010 成功但建议重启（运行时本身不需要重启就能用）；1638 已装有更新的版本 }
+    if (ResultCode <> 0) and (ResultCode <> 3010) and (ResultCode <> 1638) then
+    begin
+      Result := Format('The .NET {#DotNetChannel} Desktop Runtime installer failed (exit code %d). ' +
+        'Install it manually from https://dotnet.microsoft.com/download/dotnet/{#DotNetChannel} ' +
+        'and then run Setup again.', [ResultCode]);
+      Exit;
+    end;
+    { 退出码不可全信（例如被组策略拦下仍回 0），以实际装上为准 }
+    if not HasDotNetDesktop() then
+      Result := 'The .NET {#DotNetChannel} Desktop Runtime installer finished, but the runtime is still ' +
+        'not present. Install it manually from https://dotnet.microsoft.com/download/dotnet/{#DotNetChannel} ' +
+        'and then run Setup again.';
+  finally
+    DownloadPage.ProgressBar.Style := npbstNormal;
+    DownloadPage.Hide;
   end;
 end;
 
@@ -255,13 +320,15 @@ begin
   RegWriteExpandStringValue(HKEY_LOCAL_MACHINE, EnvKey, 'Path', NewPath);
 end;
 
-{ ---- 安装前：停掉在跑的服务与客户端，否则文件被占用会要求重启 ---- }
+{ ---- 安装前：先保证运行时在，再停掉在跑的服务与客户端，否则文件被占用会要求重启 ---- }
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   ResultCode: Integer;
 begin
-  Result := '';
   NeedsRestart := False;
+  Result := EnsureDotNetDesktop();
+  if Result <> '' then
+    Exit;
   Exec(ExpandConstant('{sys}\sc.exe'), 'stop {#ServiceName}', '',
        SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Exec(ExpandConstant('{sys}\taskkill.exe'), '/f /im ImmurokClient.exe', '',

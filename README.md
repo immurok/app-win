@@ -13,17 +13,17 @@ For the macOS client see [`app-macos`](https://github.com/immurok/app-macos); bo
 
 | Project | Language | Description |
 |---------|----------|-------------|
-| `ImmurokCommon` | C# (.NET 8) | Shared library: GATT UUIDs, command/status enums, IPC text protocol and framing |
-| `ImmurokService` | C# (.NET 8) | Windows service: BLE communication, ECDH+HKDF+HMAC security layer, named-pipe IPC, lock-screen unlock, SSH agent, OTA |
+| `ImmurokCommon` | C# (.NET 10) | Shared library: GATT UUIDs, command/status enums, IPC text protocol and framing |
+| `ImmurokService` | C# (.NET 10) | Windows service: BLE communication, ECDH+HKDF+HMAC security layer, named-pipe IPC, lock-screen unlock, SSH agent, OTA |
 | `ImmurokClient` | C# (WPF + Fluent) | Desktop client: pairing, fingerprint enrollment, key management, device status and settings |
-| `ImmurokCli` | C# (.NET 8) | Command-line client, over the same IPC pipe |
+| `ImmurokCli` | C# (.NET 10) | Command-line client, over the same IPC pipe |
 | `ImmurokCredentialProvider` | C++ (COM DLL) | Credential Provider that runs inside LogonUI and submits credentials on the lock screen |
 | `ImmurokConsolePrompt` | C# | Console prompt for SSH / terminal authorization |
 | `ImmurokTests` | C# (xunit) | Unit tests for pure logic (SSH agent takeover/restore, git config switch); runs on Windows and macOS |
 
 ## Build
 
-Requires **Visual Studio 2022** (with the "Desktop development with C++" workload and the .NET 8 SDK).
+Requires **Visual Studio 2022** (with the "Desktop development with C++" workload and the .NET 10 SDK).
 
 ```powershell
 # Build everything (.NET components + C++ Credential Provider)

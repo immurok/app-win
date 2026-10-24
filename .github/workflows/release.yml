@@ -36,18 +36,22 @@ jobs:
     # (subject repo:immurok/app-win:environment:release), so only this job can
     # sign. Add required reviewers to the environment to gate every release.
     environment: release
-    # windows-2025 ships everything this build needs, so there is nothing to
-    # install at runtime:
+    # windows-2025 ships the rest of what this build needs:
     #   · Inno Setup 6            (packaging/build-installer.ps1 finds ISCC via the registry)
-    #   · .NET 8 SDK
+    #   · .NET 8 runtime          (the Artifact Signing dlib runs on it)
     #   · MSVC ARM64 toolchain    (Microsoft.VisualStudio.Component.VC.Tools.ARM64)
     # That last one is why both architectures can be built on a hosted runner —
     # the Credential Provider must be compiled natively per architecture, since
     # Windows will not load an x64 in-process DLL into a native Arm64 LogonUI.
+    # The .NET 10 SDK is installed explicitly below rather than trusting the image.
     runs-on: windows-2025
 
     steps:
       - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
 
       - name: Toolchain versions
         shell: pwsh
@@ -116,8 +120,9 @@ jobs:
             > snapshotted VM and keep password sign-in as a fallback before deploying
             > to a machine you rely on.
 
-            Requires the [.NET 8 Desktop Runtime (x64)](https://dotnet.microsoft.com/download/dotnet/8.0);
-            the installer checks for it and links the download if missing.
+            Requires the [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0);
+            if it is missing, the installer downloads and installs it from Microsoft
+            (hash-pinned at build time) before continuing.
 
             Pick the package matching your CPU: `x64` for Intel/AMD, `arm64` for
             Windows on Arm. They are not interchangeable — the x64 package refuses

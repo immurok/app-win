@@ -8,6 +8,7 @@ public enum ImmurokCommand : byte
 {
     GetStatus    = 0x01,
     GetBattRaw   = 0x02,
+    GetConnParams = 0x03, // 链路层实际连接参数，固件 1.7.2+；配对前也可发
 
     EnrollStart  = 0x10,
     EnrollCancel = 0x11,

@@ -1,0 +1,74 @@
+<ui:FluentWindow x:Class="ImmurokClient.Views.SetupWizardWindow"
+                 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                 xmlns:loc="clr-namespace:ImmurokClient.Localization"
+                 xmlns:h="clr-namespace:ImmurokClient.Helpers"
+                 Title="{loc:Tr wizard.title}"
+                 Width="700" Height="540"
+                 ResizeMode="CanMinimize"
+                 Topmost="True"
+                 ExtendsContentIntoTitleBar="True"
+                 WindowBackdropType="Mica"
+                 WindowStartupLocation="CenterScreen">
+    <!-- Topmost：向导会把用户支到 Windows 设置里去添加蓝牙设备，置顶后用户能看到
+         「已连接」的反馈并直接点下一步（设计稿「窗口始终置顶」）。 -->
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <ui:TitleBar Grid.Row="0" Title="{loc:Tr wizard.title}" ShowMaximize="False" />
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="190" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- 侧栏：logo + 步骤列表（打勾可回看） -->
+            <Border Grid.Column="0" Background="#0F808080"
+                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="0,0,1,0">
+                <StackPanel Margin="16,8,16,16">
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                        <Image x:Name="Logo" Width="24" Height="24" Margin="0,0,8,0" />
+                        <TextBlock Text="immurok" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <StackPanel x:Name="SidebarPanel" />
+                </StackPanel>
+            </Border>
+
+            <Grid Grid.Column="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" h:WheelScroll.Enabled="True">
+                    <ContentControl x:Name="StepHost" Margin="28,16,28,20" />
+                </ScrollViewer>
+
+                <!-- 底栏：左「稍后再说」，右「上一步」+「下一步 / 跳过此步 / 完成」 -->
+                <Border Grid.Row="1" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="0,1,0,0"
+                        Padding="16,12">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ui:Button x:Name="LaterBtn" Grid.Column="0" Content="{loc:Tr wizard.skip.later}"
+                                   Appearance="Transparent" Click="OnLaterClick" />
+                        <StackPanel Grid.Column="2" Orientation="Horizontal">
+                            <ui:Button x:Name="PrevBtn" Content="{loc:Tr wizard.prev}" Appearance="Secondary"
+                                       MinWidth="88" Margin="0,0,8,0" Click="OnPrevClick" />
+                            <ui:Button x:Name="NextBtn" MinWidth="88" Click="OnNextClick" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Grid>
+    </Grid>
+</ui:FluentWindow>

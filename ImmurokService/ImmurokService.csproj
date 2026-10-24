@@ -9,17 +9,17 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.13" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.13" />
     <!-- DPAPI（ProtectedData / DataProtectionScope）在现代 .NET 中是独立包 -->
-    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.13" />
     <!-- 接管 / 还原 Windows 内置 ssh-agent 服务（SshAgentServer 要占同名管道） -->
-    <PackageReference Include="System.ServiceProcess.ServiceController" Version="8.0.0" />
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.13" />
     <!-- 仅用于把设备的 compressed P-256 公钥解压成 uncompressed 点（BCL 不直接支持） -->
     <PackageReference Include="BouncyCastle.Cryptography" Version="2.4.0" />
     <!-- 结构化日志：滚动日志文件（服务模式下无控制台，日志需落盘） -->
-    <PackageReference Include="Serilog.Extensions.Hosting" Version="8.0.0" />
-    <PackageReference Include="Serilog.Settings.Configuration" Version="8.0.0" />
+    <PackageReference Include="Serilog.Extensions.Hosting" Version="10.0.0" />
+    <PackageReference Include="Serilog.Settings.Configuration" Version="10.0.1" />
     <PackageReference Include="Serilog.Sinks.File" Version="5.0.0" />
     <PackageReference Include="Serilog.Sinks.Console" Version="5.0.0" />
   </ItemGroup>

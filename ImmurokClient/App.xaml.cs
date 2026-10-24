@@ -13,6 +13,7 @@ public partial class App : Application
     private static Mutex? _mutex;
     private TaskbarIcon? _tray;
     private MainWindow? _window;
+    private Views.SetupWizardWindow? _wizard;
     private bool _forceExit;
 
     protected override void OnStartup(StartupEventArgs e)
@@ -54,6 +55,8 @@ public partial class App : Application
         var menu = new ContextMenu();
         var openItem = new MenuItem { Header = Localization.Loc.Instance.T("tray.open") };
         openItem.Click += (_, _) => ShowWindow();
+        var wizardItem = new MenuItem { Header = Localization.Loc.Instance.T("tray.wizard") };
+        wizardItem.Click += (_, _) => ShowSetupWizard();
         var exitItem = new MenuItem { Header = Localization.Loc.Instance.T("tray.exit") };
         exitItem.Click += (_, _) =>
         {
@@ -62,14 +65,14 @@ public partial class App : Application
             Shutdown();
         };
         menu.Items.Add(openItem);
+        menu.Items.Add(wizardItem);
         menu.Items.Add(exitItem);
         _tray.ContextMenu = menu;
         _tray.TrayMouseDoubleClick += (_, _) => ShowWindow();
         _tray.ForceCreate();
 
-        // 已配对的机器上启动（通常是开机自启）不弹主窗口，只驻托盘；未配对或服务没起来才显示，
-        // 让用户看到配对引导。托盘菜单「打开」与双击照常可拉出窗口。
-        _ = ShowWindowUnlessPairedAsync();
+        // 首屏：该走向导就只弹向导；否则已绑定的机器上启动（通常是开机自启）不弹主窗口，只驻托盘。
+        _ = ShowStartupUiAsync();
 
         // 开机自启：首次运行默认开启；之后只在安装路径变化时校正，不覆盖用户的选择。
         // 注入必须由本进程（用户会话）完成，客户端不常驻就等于功能静默失效。
@@ -79,18 +82,47 @@ public partial class App : Application
         Services.AppServices.Injection.Start();
     }
 
-    /// <summary>查一次配对状态决定首屏显不显示。服务没响应按未配对处理（此时更需要让用户看到状态）。</summary>
-    private async System.Threading.Tasks.Task ShowWindowUnlessPairedAsync()
+    /// <summary>
+    /// 首屏决策（docs/setup-wizard-flow.md「何时弹出」的 Windows 版）：
+    /// 用户从未点过向导的「完成 / 稍后再说」，或服务连不上、锁屏组件（CP）没登记，就弹设置向导；
+    /// 否则沿用老规则——未绑定才显示主窗口，已绑定只驻托盘。
+    /// </summary>
+    private async System.Threading.Tasks.Task ShowStartupUiAsync()
     {
-        bool paired = false;
-        try
+        // 开机自启时服务可能比客户端晚几秒就绪：多问几次再下「服务没起来」的结论，
+        // 否则每次开机都会误弹一次向导。
+        string? pair = null;
+        for (int i = 0; i < 5 && pair is null; i++)
         {
-            string? r = await Services.AppServices.Pipe.SendAsync(
+            if (i > 0) await System.Threading.Tasks.Task.Delay(2000);
+            pair = await Services.AppServices.Pipe.SendAsync(
                 $"{IpcProtocol.Pair}:{IpcProtocol.PairStatus}", timeoutMs: 3000);
-            paired = r?.Contains("PAIRED") == true && !r.Contains("UNPAIRED");
         }
-        catch { /* 服务未运行 */ }
+        bool serviceUp = pair is not null;
+        bool paired = pair?.Contains("PAIRED") == true && !pair.Contains("UNPAIRED");
+
+        if (!Services.ClientSettings.SetupCompleted || !serviceUp
+            || !Services.SystemComponents.IsCredentialProviderRegistered())
+        {
+            ShowSetupWizard();
+            return;
+        }
         if (!paired) ShowWindow();
+    }
+
+    /// <summary>打开设置向导（已开着就提到前台）。托盘菜单、设置页、启动时共用。</summary>
+    public void ShowSetupWizard()
+    {
+        if (_wizard is not null)
+        {
+            _wizard.WindowState = WindowState.Normal;
+            _wizard.Activate();
+            return;
+        }
+        _wizard = new Views.SetupWizardWindow();
+        _wizard.Closed += (_, _) => _wizard = null;
+        _wizard.Show();
+        _wizard.Activate();
     }
 
     private void ShowWindow()

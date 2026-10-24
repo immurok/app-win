@@ -160,7 +160,10 @@ public sealed record AppIdentity(
         if (string.IsNullOrEmpty(exePath)) return ("", "");
         try
         {
+            // SYSLIB0057：X509CertificateLoader 不支持从 PE 的 Authenticode 签名里取证书，没有替代 API。
+#pragma warning disable SYSLIB0057
             using var cert = new X509Certificate2(X509Certificate.CreateFromSignedFile(exePath));
+#pragma warning restore SYSLIB0057
             return (cert.GetNameInfo(X509NameType.SimpleName, false) ?? "", cert.Thumbprint ?? "");
         }
         catch { return ("", ""); } // 未签名 / 读不到证书

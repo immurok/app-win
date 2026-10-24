@@ -1,7 +1,7 @@
 <Project>
   <!-- 仅对 .NET 托管项目生效；C++ 的 .vcxproj 不读取这些属性，用条件避免干扰。 -->
   <PropertyGroup Condition="'$(MSBuildProjectExtension)' == '.csproj'">
-    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <!-- 支持的最低 Windows 版本（WinRT BLE 需要 10.0.15063+；这里取常用基线） -->
     <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
     <LangVersion>latest</LangVersion>
@@ -20,9 +20,9 @@
   <PropertyGroup>
     <Company>immurok</Company>
     <Product>immurok for Windows</Product>
-    <Version>0.5.0</Version>
-    <AssemblyVersion>0.5.0.0</AssemblyVersion>
-    <FileVersion>0.5.0.0</FileVersion>
+    <Version>0.6.0</Version>
+    <AssemblyVersion>0.6.0.0</AssemblyVersion>
+    <FileVersion>0.6.0.0</FileVersion>
     <Copyright>Copyright © immurok</Copyright>
   </PropertyGroup>
 </Project>

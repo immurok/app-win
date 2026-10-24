@@ -79,7 +79,10 @@ public sealed class CallerPolicy
 
     private static string? Thumbprint(string path)
     {
+        // SYSLIB0057：X509CertificateLoader 不支持从 PE 的 Authenticode 签名里取证书，没有替代 API。
+#pragma warning disable SYSLIB0057
         try { return X509Certificate.CreateFromSignedFile(path).GetCertHashString(); }
+#pragma warning restore SYSLIB0057
         catch { return null; }
     }
 }

@@ -838,6 +838,19 @@ public sealed class BleManager : IAsyncDisposable
         return (true, r[2], r[3]);
     }
 
+    /// <summary>
+    /// 链路层当前实际生效的连接参数（GET_CONN_PARAMS 0x03，固件 1.7.2+），不是 PPCP 里的期望值。
+    /// 响应 <c>[0x03][OK][interval:2 BE][latency:2 BE][timeout:2 BE]</c>，BLE 原生单位
+    /// （interval ×1.25ms、latency 连接事件数、timeout ×10ms）。旧固件 / 无响应返回 null。
+    /// </summary>
+    public async Task<(ushort Interval, ushort Latency, ushort Timeout)?> GetConnParamsAsync()
+    {
+        byte[]? r = await SendCommandAsync(ImmurokCommand.GetConnParams, timeoutMs: 3000);
+        if (r is not { Length: >= 8 } || r[0] != (byte)ImmurokCommand.GetConnParams || r[1] != (byte)ImmurokStatus.Ok)
+            return null;
+        return ((ushort)(r[2] << 8 | r[3]), (ushort)(r[4] << 8 | r[5]), (ushort)(r[6] << 8 | r[7]));
+    }
+
     /// <summary>解绑本机的结果。</summary>
     public enum ClearOwnResult
     {
@@ -1002,12 +1015,13 @@ public sealed class BleManager : IAsyncDisposable
     public async Task<PairFailureReason> StartPairingAsync(
         bool fpGateFirst = false, int retries = 3, CancellationToken ct = default)
     {
-        if (!_connected) return PairFailureReason.Generic;
+        LastPairFailureDetail = null;
+        if (!_connected) return PairFail("NOT_CONNECTED");
         _pairFpFails = 0;
 
         byte[]? initResp = await SendCommandAsync(ImmurokCommand.PairInit, timeoutMs: 5000, ct: ct);
         if (initResp is not { Length: >= 1 })
-            return PairFailureReason.Generic;
+            return PairFail("INIT_NO_RESPONSE");
 
         if (initResp[0] == NotifyOpcode.LinkParams)
         {
@@ -1017,7 +1031,7 @@ public sealed class BleManager : IAsyncDisposable
         }
 
         if (initResp.Length < 2 || initResp[0] != (byte)ImmurokCommand.PairInit)
-            return PairFailureReason.Generic;
+            return PairFail($"INIT_UNEXPECTED_{Convert.ToHexString(initResp)}");
 
         byte[] devicePubKey;
 
@@ -1025,7 +1039,7 @@ public sealed class BleManager : IAsyncDisposable
         {
             byte code = initResp[1];
             if (code == (byte)ImmurokStatus.ErrNeedsReset) return PairFailureReason.NeedsReset;
-            if (code != (byte)ImmurokStatus.ErrWaitButton) return PairFailureReason.Generic;
+            if (code != (byte)ImmurokStatus.ErrWaitButton) return PairFail($"INIT_STATUS_{code:X2}");
 
             // 设备已进入等待：告诉界面现在该做什么。后续 0x34 通知会把阶段推着往前走。
             PairProgress?.Invoke(
@@ -1053,7 +1067,7 @@ public sealed class BleManager : IAsyncDisposable
         }
         else
         {
-            return PairFailureReason.Generic;
+            return PairFail($"INIT_SHORT_{Convert.ToHexString(initResp)}");
         }
 
         byte[] appPubKey = _security.StartPairing();
@@ -1062,11 +1076,26 @@ public sealed class BleManager : IAsyncDisposable
             || confirmResp[0] != (byte)ImmurokCommand.PairConfirm
             || confirmResp[1] != (byte)ImmurokStatus.Ok)
         {
-            return PairFailureReason.Generic;
+            return PairFail(confirmResp is null
+                ? "CONFIRM_NO_RESPONSE"
+                : $"CONFIRM_{Convert.ToHexString(confirmResp)}");
         }
 
         bool ok = _security.CompletePairing(devicePubKey);
-        return ok ? PairFailureReason.None : PairFailureReason.Generic;
+        return ok ? PairFailureReason.None : PairFail("KEY_DERIVE_FAILED");
+    }
+
+    /// <summary>
+    /// 最近一次配对落到 <see cref="PairFailureReason.Generic"/> 的具体位置（阶段 + 设备原始回包十六进制），
+    /// 跟在 <c>ERROR:GENERIC:</c> 后面回给客户端显示。只含协议字节，不含密钥材料。
+    /// </summary>
+    public string? LastPairFailureDetail { get; private set; }
+
+    private PairFailureReason PairFail(string detail)
+    {
+        LastPairFailureDetail = detail;
+        _log.LogWarning("配对失败: {Detail}", detail);
+        return PairFailureReason.Generic;
     }
 
     public void ResetPairing() => _security.ClearPairing();

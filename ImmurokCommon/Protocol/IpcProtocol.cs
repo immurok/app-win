@@ -9,6 +9,8 @@ public static class IpcProtocol
     // ---- 请求动词 ----
     public const string Status      = "STATUS";
     public const string Info        = "INFO";          // -> OK:<paired>:<battery>:<fw>:<fpcount>
+    /// <summary>链路层当前生效的连接参数（BLE 原生单位）。CONNPARAMS -&gt; OK:&lt;interval×1.25ms&gt;:&lt;latency&gt;:&lt;timeout×10ms&gt;；旧固件 ERROR。</summary>
+    public const string ConnParams  = "CONNPARAMS";
     public const string Auth        = "AUTH";          // AUTH:username:service
     public const string Fp          = "FP";            // FP:LIST | FP:ENROLL:slot | FP:DELETE:slot | FP:STATUS
     public const string Ota         = "OTA";           // OTA:INFO|ERASE|HEADER|WRITE|VERIFY|END|VERSION

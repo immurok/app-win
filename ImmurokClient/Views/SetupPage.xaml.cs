@@ -39,6 +39,9 @@ public partial class SetupPage : Page
         _langInit = false;
     }
 
+    private void OnOpenWizardClick(object sender, RoutedEventArgs e)
+        => (Application.Current as App)?.ShowSetupWizard();
+
     private void OnLanguageChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_langInit) return;

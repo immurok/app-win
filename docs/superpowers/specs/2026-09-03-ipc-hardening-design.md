@@ -92,7 +92,7 @@
 
 状态：**已实现并在开发机验收**（2026-09-06，`Ipc/CallerPolicy.cs` + `CommandHandlers.AuthorizeAsync`，PipeServer 在分派前统一调用，CliServer 对 `APPROVE` / `CANCEL` 同样校验）。实测：普通用户的 powershell.exe（不在安装目录）发 `AUTH` / `FEATURE:SET` / `FP:ENROLL` / `PASS:SET` / `PAIR:RESET` / imk `APPROVE` 全部 `ERROR:CALLER_NOT_TRUSTED`，`PASS:STATUS` / `KEY:LIST` 放行；安装目录里的 imk.exe `imk run --agent` 照常。与下文的差异：
 
-- **当前构建未签名**，`CallerPolicy` 退化为只看「映像路径在 Service 自己的安装目录下」（`Mode = path-only`，日志有警告）；Service 自身带签名时才启用 `WinVerifyTrust` + 发布者指纹比对（代码已写，未在签名构建上验）。安装目录取 `AppContext.BaseDirectory` 而不是写死 `%ProgramFiles%`，§9.7 的 x86/x64 路径问题随之消失。
+- **Service 未签名时**（开发构建），`CallerPolicy` 退化为只看「映像路径在 Service 自己的安装目录下」（`Mode = path-only`，日志有警告）；Service 自身带签名时启用 `WinVerifyTrust` + 发布者指纹比对（`signed`）。2026-10 起正式安装包经 Azure Artifact Signing 签名，已在签名构建上实测生效：放在安装目录子目录里的未签名客户端被拒 `ERROR:CALLER_NOT_TRUSTED`（2026-10-24，试设置向导时撞上）。安装目录取 `AppContext.BaseDirectory` 而不是写死 `%ProgramFiles%`，§9.7 的 x86/x64 路径问题随之消失。
 - **只对「持久写入」要主机侧门**（2026-09-06 晚用户决定收窄）：`PASS:SET`（写凭据管理器）、`OTA:PUSH`（刷固件）先发 `AUTH_REQUEST`（固件对它永远要新触摸）。`FEATURE:SET:*:1` 和 `SSHAGENT:ON` **不要门**——开关本身不放行任何秘密：解锁推密码、SSH 签名、读 OTP 各自仍要触摸，攻击者替用户打开开关什么也拿不到，加门只是每次开开关多摸一次，还引出过客户端串行锁冻界面一分钟的事故（见下）。关掉功能、清密码、解绑设备（`PASS:CLEAR`、`FEATURE:SET:*:0`、`SSHAGENT:OFF`、`PAIR:RESET`）同样不要门——收缩攻击面，设备丢了正需要能做这些——只受 owner 校验（§3.5）。这一条与下表不同，以本段为准。
 - 固件已设门的命令（`FP:ENROLL`（已有指纹时）/`FP:DELETE`、`KEY:DELETE/ADD*/SSHGEN/UPDATE`、`SLOT:CLEAR`、`PAIR:START` 的配对流程）不再叠一道主机门，否则每个动作要摸两次；残余风险是固件 cooldown 10s 内的重放（§3.6 待办）。
 - 客户端：所有要过门的操作一律套现成的 `FpAuthDialog`（30s 倒计时 + 取消，取消发 `CANCELGATE`），`PASS:SET` 已接上，管道超时 35s。踩过的坑：`PipeClient` 原有一把 `SemaphoreSlim(1,1)` 把同实例所有请求串行化，一条等门的请求会把页面查询、按钮点击、连 `CANCELGATE` 都堵在后面 30s（实测两次门超时 → 设置页停在「查询中」、「清除」一分钟后才生效；等待窗的「取消」实际到不了服务端）。已去掉这把锁，服务端管道多实例、并发短连接没问题。

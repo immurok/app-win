@@ -47,6 +47,13 @@ public sealed class InjectionListener
                 string? r = await pipe.SendAsync(poll, 30000, ct).ConfigureAwait(false);
                 if (r is not null && r.StartsWith(IpcProtocol.Ok + ":", StringComparison.Ordinal))
                     InjectionEngine.TryInjectForeground();
+                else if (r != IpcProtocol.Ok)
+                {
+                    // 服务秒回错误（如未签名构建被拒 ERROR:CALLER_NOT_TRUSTED）时不能零等待重发，
+                    // 否则紧打转、服务端日志每秒几十条。被拒是装法问题，重试也不会变，退避久一点。
+                    int delay = r == IpcProtocol.ErrCallerNotTrusted ? 60000 : 1000;
+                    await Task.Delay(delay, ct).ConfigureAwait(false);
+                }
             }
             catch
             {

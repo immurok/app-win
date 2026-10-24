@@ -18,7 +18,24 @@
                         <TextBlock Text="{loc:Tr device.conn}" FontWeight="SemiBold" VerticalAlignment="Center" />
                     </StackPanel>
                     <TextBlock x:Name="ConnText" Text="{loc:Tr common.querying}" Opacity="0.85" />
-                    <TextBlock x:Name="InfoText" Text="" Margin="0,6,0,0" Opacity="0.6" FontSize="12" />
+                    <!-- 点固件版本这一行读取链路层实际连接参数（GET_CONN_PARAMS，固件 1.7.2+），与 macOS / Linux 一致 -->
+                    <TextBlock x:Name="InfoText" Text="" Margin="0,6,0,0" Opacity="0.6" FontSize="12"
+                               HorizontalAlignment="Left" Cursor="Hand"
+                               ToolTip="{loc:Tr device.connparams.help}"
+                               MouseLeftButtonUp="OnInfoTextClick" />
+                    <Popup x:Name="ConnParamsPopup" PlacementTarget="{Binding ElementName=InfoText}" Placement="Bottom"
+                           VerticalOffset="6" StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade">
+                        <Border Background="{DynamicResource ApplicationBackgroundBrush}"
+                                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="1"
+                                CornerRadius="6" Padding="14,10" MaxWidth="360">
+                            <StackPanel>
+                                <TextBlock Text="{loc:Tr device.connparams.title}" FontWeight="SemiBold" Margin="0,0,0,6"
+                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                                <TextBlock x:Name="ConnParamsText" TextWrapping="Wrap" FontSize="12" LineHeight="18"
+                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                            </StackPanel>
+                        </Border>
+                    </Popup>
                 </StackPanel>
             </ui:Card>
 

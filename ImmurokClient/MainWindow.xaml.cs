@@ -92,7 +92,7 @@ public partial class MainWindow : FluentWindow
     }
 
     /// <summary>读注册表判定系统主题（AppsUseLightTheme：0=深色，1=浅色）。</summary>
-    private static ApplicationTheme DetectSystemTheme()
+    internal static ApplicationTheme DetectSystemTheme()
     {
         try
         {

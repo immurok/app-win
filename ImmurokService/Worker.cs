@@ -74,7 +74,10 @@ public sealed class Worker : BackgroundService
         _dataDir = dataDir;
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    // 初始化放 StartAsync 而不是 ExecuteAsync 开头：.NET 10 起 ExecuteAsync 整段都丢到线程池跑，
+    // 服务会先向 SCM 报「运行中」、管道后建好，CP / 客户端在启动瞬间连管道会失败。
+    // StartAsync 跑完宿主才报运行中，等价于 .NET 8 下「首个 await 之前同步执行」的旧时序。
+    public override Task StartAsync(CancellationToken cancellationToken)
     {
         _log.LogInformation("ImmurokService 启动");
         MigrateOwnerFromCredential();
@@ -92,6 +95,11 @@ public sealed class Worker : BackgroundService
         // imk CLI 服务：随服务常驻启动。
         _cli.Start();
 
+        return base.StartAsync(cancellationToken);
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
         try
         {
             // 每 2 秒轮询：锁屏解锁主要由 0x21 事件驱动，但这里兜底处理

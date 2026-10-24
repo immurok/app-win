@@ -1,6 +1,9 @@
-﻿using System.Threading.Tasks;
+﻿using System;
+using System.Globalization;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using ImmurokClient.Localization;
 using ImmurokClient.Services;
 using ImmurokCommon.Protocol;
@@ -13,6 +16,10 @@ public partial class DevicePage : Page
 
     private byte _activeSlot;
     private bool _connected;
+
+    /// <summary>INFO 里的固件版本，决定点版本行时发不发 CONNPARAMS（1.7.2 起才有）。</summary>
+    private string? _firmware;
+    private bool _readingConnParams;
 
     /// <summary>本地是否存着 shared_key（PAIR:STATUS 的答案）。只代表「我们这边有一把钥匙」。</summary>
     private bool _paired;
@@ -81,6 +88,8 @@ public partial class DevicePage : Page
 
         // 设备信息
         InfoText.Text = "";
+        _firmware = null;
+        ConnParamsPopup.IsOpen = false;
         if (connected)
         {
             string? info = await AppServices.Pipe.InfoAsync();
@@ -91,6 +100,7 @@ public partial class DevicePage : Page
                 {
                     string batt = ip[2] == "-1" ? T("common.unknown") : $"{ip[2]}%";
                     InfoText.Text = T("msg.dev.info", batt, ip[3], ip[4]);
+                    _firmware = ip[3];
                 }
             }
         }
@@ -299,6 +309,65 @@ public partial class DevicePage : Page
         return active ? T("msg.slot.self_active") : T("msg.slot.other");
     }
 
+    /// <summary>
+    /// 点固件版本那一行：读链路层实际连接参数并弹出 tips（与 macOS / Linux 同一条 GET_CONN_PARAMS）。
+    /// 每次现读——两端随时可能重新协商，监督超时太短正是绑定失败（0xFF）的常见原因，旧值会误导。
+    /// </summary>
+    private async void OnInfoTextClick(object sender, MouseButtonEventArgs e)
+    {
+        if (!_connected || string.IsNullOrEmpty(InfoText.Text) || _readingConnParams) return;
+
+        // 固件 < 1.7.2 没有 0x03：不发，免得白等设备超时，直接给「需要 1.7.2+」提示。
+        if (!SupportsConnParams(_firmware))
+        {
+            ShowConnParams(T("device.connparams.failed"));
+            return;
+        }
+
+        _readingConnParams = true;
+        ShowConnParams(T("common.querying"));
+        string? r = await AppServices.Pipe.ConnParamsAsync();
+        _readingConnParams = false;
+        ShowConnParams(FormatConnParams(r) ?? T("device.connparams.failed"));
+    }
+
+    private void ShowConnParams(string text)
+    {
+        ConnParamsText.Text = text;
+        ConnParamsPopup.IsOpen = true;
+    }
+
+    /// <summary>OK:&lt;interval&gt;:&lt;latency&gt;:&lt;timeout&gt;，BLE 原生单位：interval ×1.25ms、latency 连接事件数、timeout ×10ms。</summary>
+    private static string? FormatConnParams(string? r)
+    {
+        if (r is null || !r.StartsWith(IpcProtocol.Ok + IpcProtocol.Sep)) return null;
+        string[] p = r.Split(IpcProtocol.Sep);
+        if (p.Length < 4 || !ushort.TryParse(p[1], out ushort interval)
+            || !ushort.TryParse(p[2], out ushort latency) || !ushort.TryParse(p[3], out ushort timeout))
+            return null;
+        double intervalMs = interval * 1.25;
+        // 空闲时的有效事件间隔：latency 允许外设连续跳过的极限
+        double idleMs = intervalMs * (latency + 1);
+        return T("device.connparams.message",
+            intervalMs.ToString("F2", CultureInfo.InvariantCulture), interval, latency, timeout * 10,
+            idleMs.ToString("F0", CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>固件版本可能带 build 段（"1.7.2.abc"），取前三段数字比较；解析不了按不支持。</summary>
+    private static bool SupportsConnParams(string? fw)
+    {
+        if (string.IsNullOrEmpty(fw)) return false;
+        string[] seg = fw.TrimStart('v', 'V').Split('.');
+        if (seg.Length < 3) return false;
+        int[] v = new int[3];
+        for (int i = 0; i < 3; i++)
+        {
+            string digits = new string(seg[i].TakeWhile(char.IsDigit).ToArray());
+            if (!int.TryParse(digits, out v[i])) return false;
+        }
+        return (v[0], v[1], v[2]).CompareTo((1, 7, 2)) >= 0;
+    }
+
     private async void OnRefreshClick(object sender, RoutedEventArgs e) => await RefreshAsync();
 
     private async void OnPairClick(object sender, RoutedEventArgs e) => await PairAsync();
@@ -328,19 +397,7 @@ public partial class DevicePage : Page
         // 整个配对过程在引导窗里走完（内部消费 PAIR:START 流），返回终态。
         PairOutcome outcome = PairDialog.Run(Window.GetWindow(this), twoStep);
 
-        string result = outcome.Terminal switch
-        {
-            var x when x.Contains("PAIRED") => T("msg.pair.ok"),
-            PairDialog.Cancelled => T("msg.pair.cancelled"),
-            var x when x.Contains("NOSERVICE") => T("msg.pair.noservice"),
-            var x when x.Contains("NOT_CONNECTED") => T("msg.pair.notconnected"),
-            var x when x.Contains("NEEDSRESET") => T("msg.pair.needsreset"),
-            var x when x.Contains("LINKPARAMS") => T("msg.pair.linkparams"),
-            // 超时到底卡在哪一步，看设备最后推到的阶段，不靠猜。
-            var x when x.Contains("WAITBUTTON")
-                => T(outcome.FingerprintDone ? "msg.pair.waitbutton" : "msg.pair.waitbutton_fp"),
-            _ => T("msg.pair.fail"),
-        };
+        string result = PairDialog.Describe(outcome);
 
         // RefreshAsync 会按最新状态重设三个按钮的可用性并收起步骤，无需在此手工恢复；
         // 但它也会重写 PairText / 清 PairResult，所以结果文案放在刷新之后。

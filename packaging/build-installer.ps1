@@ -7,9 +7,11 @@
   流程：编 C++ Credential Provider → 发布三个 .NET 程序（框架依赖）→ 汇总到暂存目录
         →（可选）签名二进制 → ISCC 编译（签名时连同安装包、卸载程序一起签）。
 
-  为什么是框架依赖而非自包含：安装包只有几 MB，代价是目标机需装 .NET 8 Desktop
-  Runtime。immurok.iss 的 InitializeSetup 会在安装前检测并给出下载指引，不会让用户
-  装完才在启动时撞见运行时缺失。
+  为什么是框架依赖而非自包含：安装包只有几 MB，运行时的安全补丁也继续走 Microsoft
+  Update，不用每出一个 .NET CVE 就重发安装包。代价是目标机要有 .NET Desktop Runtime：
+  打包时从微软的 release metadata 取当前最新补丁版的官方安装程序，校验后把 URL 与
+  SHA-256 写进安装包；目标机缺运行时，安装程序就在安装流程里下载（按 SHA-256 校验）、
+  静默安装，装好再继续。运行时主版本跟随 Directory.Build.props 的 TargetFramework。
 
   为什么用 Inno 而不是 WiX：WiX v6 起适用 Open Source Maintenance Fee，v7 更是不接受
   许可条款就无法执行任何命令。Inno Setup 完全免费且无此类机制。MSIX 则做不了本项目
@@ -18,9 +20,9 @@
 
 .NOTES
   依赖：
-    · .NET 8 SDK
+    · .NET 10 SDK
     · Visual Studio 2022（编 C++ Credential Provider）
-    · Inno Setup 6：https://jrsoftware.org/isdl.php
+    · Inno Setup 6.1+（安装时下载运行时用的 CreateDownloadPage 从 6.1 起才有）：https://jrsoftware.org/isdl.php
 
   ⚠️ Credential Provider 进入登录链路，首次务必在带快照的虚拟机中验证。
 
@@ -292,6 +294,48 @@ function Get-InnoSignCommand {
     return ($parts -join ' ') + ' $f'
 }
 
+# ---- .NET Desktop Runtime 的官方安装程序（安装包缺运行时时下载用）----
+# 主版本取自 TargetFramework（net10.0-windows... → 10.0），换 TFM 不用改这里。
+$tfm = ([xml](Get-Content $propsPath)).Project.PropertyGroup.TargetFramework |
+       Where-Object { $_ } | Select-Object -First 1
+if ($tfm -notmatch '^net(\d+\.\d+)-') { throw "无法从 TargetFramework '$tfm' 解析 .NET 主版本。" }
+$dotnetChannel = $Matches[1]
+
+# 返回 @{ Version; Url; Sha256 }。安装包只嵌 URL + SHA-256，不嵌运行时本体。
+# 下载到 packaging\.tools 校验三道：release metadata 里的 SHA-512、Authenticode 签名有效、
+# 签名者是 Microsoft。都过了才算出 SHA-256 交给 Inno —— 安装程序以管理员身份运行下载来的
+# exe，哈希钉死在打包时，下载被篡改就直接失败。
+function Get-DesktopRuntime([string]$arch) {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    $meta =Invoke-RestMethod "https://builds.dotnet.microsoft.com/dotnet/release-metadata/$dotnetChannel/releases.json"
+    $rel  = $meta.releases | Where-Object { $_.windowsdesktop } | Select-Object -First 1
+    $file = $rel.windowsdesktop.files |
+            Where-Object { $_.rid -eq "win-$arch" -and $_.name -like '*.exe' } | Select-Object -First 1
+    if (-not $file) { throw "release metadata 里找不到 win-$arch 的 Desktop Runtime 安装程序（.NET $dotnetChannel）。" }
+    $ver = $rel.windowsdesktop.version
+
+    $dir = Join-Path $pkgDir '.tools\dotnet-runtime'
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    $exe = Join-Path $dir (Split-Path $file.url -Leaf)
+    if (-not (Test-Path $exe)) {
+        Info "==> 下载 .NET Desktop Runtime $ver ($arch) 用于校验 ..."
+        Invoke-WebRequest $file.url -OutFile "$exe.part" -UseBasicParsing
+        Move-Item "$exe.part" $exe -Force
+    }
+    $sha512 = (Get-FileHash $exe -Algorithm SHA512).Hash
+    if ($sha512 -ne $file.hash.ToUpperInvariant()) {
+        Remove-Item $exe -Force
+        throw "Desktop Runtime 安装程序 SHA-512 与 release metadata 不符（已删除缓存）: $($file.url)"
+    }
+    $sig = Get-AuthenticodeSignature $exe
+    if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') {
+        throw "Desktop Runtime 安装程序签名异常（$($sig.Status) / $($sig.SignerCertificate.Subject)）: $exe"
+    }
+    $sha256 = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+    Ok "    .NET Desktop Runtime $ver ($arch) 校验通过"
+    return @{ Version = $ver; Url = $file.url; Sha256 = $sha256 }
+}
+
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
 $Arch = $Arch.ToLowerInvariant()
@@ -379,8 +423,11 @@ Credential Provider 的 ARM64 编译失败（退出码 $LASTEXITCODE）。
     # ---- 5. ISCC 编译 ----
     # 签名时由 Inno 自己调签名命令：卸载程序 unins000.exe 是 ISCC 编译期生成并压进安装包的，
     # 事后只签 setup.exe 签不到它，装完后从「设置 → 应用」卸载时 UAC 仍显示未知发布者。
+    $rt = Get-DesktopRuntime $arch
     Info "==> ISCC 编译 ($arch) ..."
-    $isccArgs = @("/DAppVersion=$version", "/DStageDir=$stage", "/DArch=$arch", "/O$outDir")
+    $isccArgs = @("/DAppVersion=$version", "/DStageDir=$stage", "/DArch=$arch", "/O$outDir",
+                  "/DDotNetChannel=$dotnetChannel", "/DDotNetVersion=$($rt.Version)",
+                  "/DDotNetUrl=$($rt.Url)", "/DDotNetSha256=$($rt.Sha256)")
     if ($signExe) { $isccArgs += @('/DSigned=1', "/Simmurok=$(Get-InnoSignCommand)") }
     & $iscc @isccArgs (Join-Path $pkgDir 'immurok.iss')
     if ($LASTEXITCODE -ne 0) { throw "ISCC 编译失败（$arch，退出码 $LASTEXITCODE）。" }

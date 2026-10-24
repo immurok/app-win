@@ -42,6 +42,8 @@ public partial class PairDialog : FluentWindow
     private enum StepState { Pending, Active, Done }
 
     private readonly bool _twoStep;
+    private DeviceIllustration? _illustration;
+    private DeviceIllustration.Scene _scene;
     private Stage _stage;
     private bool _cancelled;
     private bool _finished;
@@ -76,7 +78,9 @@ public partial class PairDialog : FluentWindow
         else dlg.WindowStartupLocation = WindowStartupLocation.CenterScreen;
 
         string terminal = Cancelled;
-        dlg.Loaded += async (_, _) =>
+        // 挂 ContentRendered 而不是 Loaded：服务秒回错误时会在 Loaded 里就 Close，
+        // WPF-UI TitleBar 随后的 ContentRendered 处理拿到零 Hwnd 抛 ArgumentException。
+        dlg.ContentRendered += async (_, _) =>
         {
             // 进度回调来自管道读取线程；用 BeginInvoke 投递，不让读取循环等 UI 排队。
             string r = await AppServices.Pipe.PairStartStreamAsync(
@@ -94,6 +98,45 @@ public partial class PairDialog : FluentWindow
             dlg._cancelled ? Cancelled : terminal,
             // 走到按键步（或更后）就说明指纹那一关过了。
             dlg._stage != Stage.WaitFingerprint);
+    }
+
+    /// <summary>
+    /// 终态 → 给用户看的一句结果。设备页和设置向导共用，两处同一个按钮、同一个框、同一套文案。
+    /// 超时到底卡在哪一步，看设备最后推到的阶段，不靠猜。
+    /// </summary>
+    public static string Describe(PairOutcome outcome) => outcome.Terminal switch
+    {
+        var x when x.Contains("PAIRED") => T("msg.pair.ok"),
+        Cancelled => T("msg.pair.cancelled"),
+        var x when x.Contains("NOSERVICE") => T("msg.pair.noservice"),
+        var x when x.Contains("NOT_CONNECTED") => T("msg.pair.notconnected"),
+        var x when x.Contains("NEEDSRESET") => T("msg.pair.needsreset"),
+        var x when x.Contains("LINKPARAMS") => T("msg.pair.linkparams"),
+        var x when x.Contains("WAITBUTTON")
+            => T(outcome.FingerprintDone ? "msg.pair.waitbutton" : "msg.pair.waitbutton_fp"),
+        // 其余失败附上服务的原始终态（ERROR:GENERIC:<阶段与设备回包> / ERROR:CALLER_NOT_TRUSTED 等），
+        // 只写「绑定失败」用户和我们都无从排查。
+        _ => $"{T("msg.pair.fail")}（{outcome.Terminal}）",
+    };
+
+    public static bool Succeeded(PairOutcome outcome) => outcome.Terminal.Contains("PAIRED");
+
+    /// <summary>
+    /// 不带槽位缓存的入口（设置向导用）：先查 SLOT:STATUS 决定画几步，再弹框跑完绑定。
+    /// 判断必须在 PAIR:START 之前完成，否则 WaitButton 可能先到、画错分支；
+    /// 查不到（旧固件 / 失败）按首次绑定画一步，服务端推来 WaitFingerprint 时引导框会自己补上。
+    /// </summary>
+    public static async System.Threading.Tasks.Task<PairOutcome> RunAsync(Window? owner)
+    {
+        bool twoStep = false;
+        string? s = await AppServices.Pipe.SlotStatusAsync();
+        // OK:<supported>:<bitmap>:<active>
+        if (s?.StartsWith(IpcProtocol.Ok) == true)
+        {
+            string[] p = s.Split(IpcProtocol.Sep);
+            twoStep = p.Length >= 4 && p[1] == "1" && int.TryParse(p[2], out int bitmap) && bitmap != 0;
+        }
+        return Run(owner, twoStep);
     }
 
     /// <summary>PROGRESS:&lt;stage&gt;[:&lt;remaining&gt;]，由 Service 转发的设备 0x34 通知。</summary>
@@ -133,6 +176,19 @@ public partial class PairDialog : FluentWindow
 
     private void ApplyStage()
     {
+        // 示意图：换场景时重建（动画从头起），同场景只切定格。交换密钥阶段保留底面图并定格。
+        var scene = _stage == Stage.WaitFingerprint
+            ? DeviceIllustration.Scene.TouchSensor
+            : DeviceIllustration.Scene.PressButton;
+        if (_illustration is null || _scene != scene)
+        {
+            _scene = scene;
+            _illustration = new DeviceIllustration(scene);
+            IllustrationHost.Content = _illustration;
+        }
+        _illustration.SetAnimated(_stage != Stage.Computing);
+        CancelHint.Visibility = _stage == Stage.WaitButton ? Visibility.Visible : Visibility.Collapsed;
+
         SetStep(Step1Badge, Step1Num, Step1Title, Step1Hint, "1",
             _stage == Stage.WaitFingerprint ? StepState.Active : StepState.Done);
         SetStep(Step2Badge, Step2Num, Step2Title, Step2Hint, _twoStep ? "2" : "1", _stage switch
@@ -195,6 +251,7 @@ public partial class PairDialog : FluentWindow
 
         _cancelled = true;
         CloseBtn.IsEnabled = false;
+        _illustration?.SetAnimated(false);
         Step1Badge.BeginAnimation(OpacityProperty, null);
         Step2Badge.BeginAnimation(OpacityProperty, null);
 

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Threading.Channels;
 using ImmurokCommon.Ble;
 using ImmurokCommon.Models;
@@ -31,6 +32,13 @@ public sealed class CommandHandlers
     private readonly PairingStore _pairing;
     private readonly SecurityStatus _status;
 
+    /// <summary>
+    /// 「调用方不可信」日志限流：同一映像 + 同一命令 5 分钟只记一条，期间被压掉的条数附在下一条里。
+    /// 未签名构建的客户端会被反复拒（长轮询、页面刷新），不限流时日志文件持续膨胀。
+    /// </summary>
+    private readonly ConcurrentDictionary<string, (DateTime Last, int Suppressed)> _denyLog = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly TimeSpan DenyLogInterval = TimeSpan.FromMinutes(5);
+
     public CommandHandlers(ILogger<CommandHandlers> log, BleManager ble, ImmurokSecurity security,
         CredentialStore creds, SshAgentFeature sshFeature, AppSettings settings, FpInjectionSignal injectionSignal,
         OwnerStore owner, CallerPolicy policy,
@@ -56,7 +64,7 @@ public sealed class CommandHandlers
     /// <summary>只读、不泄密：任何本机进程都可以发。</summary>
     private static readonly HashSet<string> ReadOnlyCommands = new(StringComparer.Ordinal)
     {
-        "STATUS", "INFO", "SECURITY:STATUS", "FEATURE:GET", "PASS:STATUS", "PAIR:STATUS", "SLOT:STATUS",
+        "STATUS", "INFO", "CONNPARAMS", "SECURITY:STATUS", "FEATURE:GET", "PASS:STATUS", "PAIR:STATUS", "SLOT:STATUS",
         "FP:LIST", "FP:SLOTS", "FP:STATUS", "KEY:LIST", "KEY:SSHPUB", "OTA:INFO", "OTA:VERSION", "SSHAGENT:STATUS",
     };
 
@@ -78,6 +86,27 @@ public sealed class CommandHandlers
         "OTA:PUSH" => true,
         _ => false,
     };
+
+    private void LogCallerDenied(string key, CallerIdentity? caller)
+    {
+        string image = caller?.ImagePath ?? "?";
+        DateTime now = DateTime.UtcNow;
+        int suppressed = 0;
+        bool emit = false;
+        _denyLog.AddOrUpdate($"{image}|{key}",
+            _ => { emit = true; return (now, 0); },
+            (_, e) =>
+            {
+                if (now - e.Last < DenyLogInterval) { emit = false; return (e.Last, e.Suppressed + 1); }
+                emit = true; suppressed = e.Suppressed; return (now, 0);
+            });
+        if (!emit) return;
+        if (suppressed > 0)
+            _log.LogWarning("{Key}：调用方不可信，拒绝（{Caller} image={Image}；此前 {Interval} 分钟内另有 {Count} 次未记）",
+                key, caller?.ToString() ?? "unknown", image, (int)DenyLogInterval.TotalMinutes, suppressed);
+        else
+            _log.LogWarning("{Key}：调用方不可信，拒绝（{Caller} image={Image}）", key, caller?.ToString() ?? "unknown", image);
+    }
 
     private static string CommandKey(string[] parts)
     {
@@ -101,7 +130,7 @@ public sealed class CommandHandlers
 
         if (_policy.Classify(caller) != CallerKind.TrustedClient)
         {
-            _log.LogWarning("{Key}：调用方不可信，拒绝（{Caller} image={Image}）", key, caller?.ToString() ?? "unknown", caller?.ImagePath ?? "?");
+            LogCallerDenied(key, caller);
             return IpcProtocol.ErrCallerNotTrusted;
         }
 
@@ -136,6 +165,7 @@ public sealed class CommandHandlers
             {
                 IpcProtocol.Status => HandleStatus(),
                 IpcProtocol.Info   => await HandleInfoAsync(),
+                IpcProtocol.ConnParams => await HandleConnParamsAsync(),
                 IpcProtocol.Fp     => await HandleFpAsync(parts, ct),
                 IpcProtocol.Pair   => await HandlePairAsync(parts, caller, ct),
                 IpcProtocol.Slot   => await HandleSlotAsync(parts),
@@ -167,6 +197,14 @@ public sealed class CommandHandlers
             _log.LogError(ex, "处理请求异常: {Verb}", verb);
             return IpcProtocol.Error;
         }
+    }
+
+    /// <summary>设备页点固件版本那一行时读取，只读、不泄密，配对前也能用（固件不要求加密）。</summary>
+    private async Task<string> HandleConnParamsAsync()
+    {
+        if (!_ble.IsConnected) return IpcProtocol.ErrNotConnected;
+        var p = await _ble.GetConnParamsAsync();
+        return p is { } v ? $"{IpcProtocol.Ok}:{v.Interval}:{v.Latency}:{v.Timeout}" : IpcProtocol.Error;
     }
 
     /// <summary>
@@ -375,7 +413,7 @@ public sealed class CommandHandlers
                     RecordOwner(caller, "PAIR:START");
                     return $"{IpcProtocol.Ok}:PAIRED";
                 }
-                return $"{IpcProtocol.Error}:{reason.ToString().ToUpperInvariant()}";
+                return PairFailureFrame(reason);
             }
             case IpcProtocol.PairReset:
             {
@@ -388,6 +426,13 @@ public sealed class CommandHandlers
             default:
                 return IpcProtocol.ErrUnknownCommand;
         }
+    }
+
+    /// <summary><c>ERROR:&lt;REASON&gt;</c>；Generic 附上 BleManager 记下的具体阶段与设备回包，界面原样显示便于排查。</summary>
+    private string PairFailureFrame(PairFailureReason reason)
+    {
+        string frame = $"{IpcProtocol.Error}:{reason.ToString().ToUpperInvariant()}";
+        return reason == PairFailureReason.Generic && _ble.LastPairFailureDetail is { } d ? $"{frame}:{d}" : frame;
     }
 
     /// <summary>
@@ -441,7 +486,7 @@ public sealed class CommandHandlers
             }
             else
             {
-                terminal = $"{IpcProtocol.Error}:{reason.ToString().ToUpperInvariant()}";
+                terminal = PairFailureFrame(reason);
             }
         }
         catch (Exception ex)
