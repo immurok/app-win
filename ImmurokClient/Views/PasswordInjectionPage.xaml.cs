@@ -3,6 +3,8 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using ImmurokClient.Controls;
+using ImmurokClient.Helpers;
 using ImmurokClient.Localization;
 using ImmurokClient.Services;
 using Wpf.Ui.Controls;
@@ -47,7 +49,7 @@ public partial class PasswordInjectionPage : Page
                 Content = added ? T("inject.presets.added", p.DisplayName) : p.DisplayName,
                 Icon = new SymbolIcon { Symbol = added ? SymbolRegular.Checkmark24 : SymbolRegular.Add24 },
                 Appearance = ControlAppearance.Secondary,
-                Margin = new Thickness(0, 0, 8, 0),
+                Margin = new Thickness(0, 0, 8, 8), // 换行后行间也要留距（ItemsControl 底部用 -8 抵掉最后一行）
                 IsEnabled = !added,
             };
             var preset = p;
@@ -84,43 +86,9 @@ public partial class PasswordInjectionPage : Page
         }
     }
 
+    /// <summary>一条注入项一张设置卡片：名称 + 身份副标题，右侧是（可选的）路径匹配徽标与编辑 / 删除。</summary>
     private UIElement BuildRow(PasswordInjectionItem it)
     {
-        var grid = new Grid { Margin = new Thickness(0) };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        // 左侧：名称 + 副标题（发行人 / exe 名）+ 未签名徽标
-        var info = new StackPanel { Margin = new Thickness(0, 0, 12, 0) };
-
-        var titleRow = new StackPanel { Orientation = Orientation.Horizontal };
-        titleRow.Children.Add(new TextBlock
-        {
-            Text = it.Name,
-            FontWeight = FontWeights.SemiBold,
-            VerticalAlignment = VerticalAlignment.Center,
-        });
-        // 只有「只能靠 exe 路径认应用」才值得挂警告徽标：升级换目录就失配，而且路径
-        // 本身不构成身份主张。包族名/签名匹配都稳，挂个黄标只会制造噪音。
-        if (it.BestIdentity == AppMatchKind.Path)
-        {
-            titleRow.Children.Add(new Border
-            {
-                Background = new SolidColorBrush(Color.FromArgb(0x33, 0xE0, 0xA0, 0x30)),
-                CornerRadius = new CornerRadius(4),
-                Padding = new Thickness(6, 1, 6, 1),
-                Margin = new Thickness(8, 0, 0, 0),
-                VerticalAlignment = VerticalAlignment.Center,
-                Child = new TextBlock
-                {
-                    Text = T("inject.badge.pathonly"),
-                    FontSize = 10,
-                    Foreground = new SolidColorBrush(Color.FromRgb(0xE0, 0xA0, 0x30)),
-                },
-            });
-        }
-        info.Children.Add(titleRow);
-
         string subtitle = it.BestIdentity switch
         {
             AppMatchKind.Package => it.PackageFamilyName,
@@ -128,41 +96,38 @@ public partial class PasswordInjectionPage : Page
             AppMatchKind.Path => SafeExeName(it.AppId),
             _ => T("inject.nocapture"),
         };
-        info.Children.Add(new TextBlock
-        {
-            Text = subtitle,
-            Opacity = 0.55,
-            FontSize = 12,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            Margin = new Thickness(0, 2, 0, 0),
-        });
 
-        Grid.SetColumn(info, 0);
-        grid.Children.Add(info);
-
-        // 右侧：编辑 / 删除
         var actions = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        var editBtn = new WpfButton
+
+        // 只有「只能靠 exe 路径认应用」才值得挂警告徽标：升级换目录就失配，而且路径
+        // 本身不构成身份主张。包族名/签名匹配都稳，挂个黄标只会制造噪音。
+        if (it.BestIdentity == AppMatchKind.Path)
         {
-            Content = T("inject.edit"),
-            Icon = new SymbolIcon { Symbol = SymbolRegular.Edit24 },
-            Appearance = ControlAppearance.Secondary,
-            Margin = new Thickness(0, 0, 8, 0),
-        };
+            var badgeText = Ui.Text(T("inject.badge.pathonly"), "CaptionCaution");
+            badgeText.TextWrapping = TextWrapping.NoWrap;
+            actions.Children.Add(new Border
+            {
+                Style = Ui.Style("CautionBadge"),
+                Margin = new Thickness(0, 0, 8, 0),
+                Child = badgeText,
+            });
+        }
+
+        var editBtn = Ui.IconButton(SymbolRegular.Edit24, T("inject.edit"));
         editBtn.Click += (_, _) => EditItem(it);
-        var delBtn = new WpfButton
-        {
-            Content = T("common.delete"),
-            Icon = new SymbolIcon { Symbol = SymbolRegular.Delete24 },
-            Appearance = ControlAppearance.Secondary,
-        };
+        var delBtn = Ui.IconButton(SymbolRegular.Delete24, T("common.delete"));
         delBtn.Click += (_, _) => DeleteItem(it);
         actions.Children.Add(editBtn);
         actions.Children.Add(delBtn);
-        Grid.SetColumn(actions, 1);
-        grid.Children.Add(actions);
 
-        return new Card { Margin = new Thickness(0, 0, 0, 10), Padding = new Thickness(16), Content = grid };
+        return new SettingCard
+        {
+            Icon = SymbolRegular.Password24,
+            Title = it.Name,
+            Description = subtitle,
+            Action = actions,
+            Margin = new Thickness(0, 0, 0, 4),
+        };
     }
 
     private static string SafeExeName(string path)
@@ -195,11 +160,9 @@ public partial class PasswordInjectionPage : Page
 
     private void DeleteItem(PasswordInjectionItem it)
     {
-        // 与 KeysPage 一致，用标准 WPF MessageBox 做确认。
-        var confirm = System.Windows.MessageBox.Show(
-            T("inject.del.confirm", it.Name), T("inject.del.title"),
-            System.Windows.MessageBoxButton.OKCancel, System.Windows.MessageBoxImage.Warning);
-        if (confirm != System.Windows.MessageBoxResult.OK) return;
+        if (!MessageDialog.Confirm(Window.GetWindow(this), T("inject.del.title"),
+                T("inject.del.confirm", it.Name), MessageKind.Danger, T("common.delete")))
+            return;
 
         PasswordInjectionStore.Remove(it.Id);
         StatusText.Text = "";

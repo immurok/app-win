@@ -7,6 +7,8 @@
             <ResourceDictionary.MergedDictionaries>
                 <ui:ThemesDictionary Theme="Dark" />
                 <ui:ControlsDictionary />
+                <!-- immurok 自己的样式层（字阶、行 / 横幅 / 设置卡片），放在 WPF-UI 之后 -->
+                <ResourceDictionary Source="Themes/Immurok.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>

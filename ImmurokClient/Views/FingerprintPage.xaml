@@ -4,47 +4,40 @@
       xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
       xmlns:loc="clr-namespace:ImmurokClient.Localization"
       xmlns:h="clr-namespace:ImmurokClient.Helpers"
+      xmlns:c="clr-namespace:ImmurokClient.Controls"
       xmlns:v="clr-namespace:ImmurokClient.Views"
       Title="{loc:Tr nav.fingerprint}">
     <ScrollViewer VerticalScrollBarVisibility="Auto" h:WheelScroll.Enabled="True">
-        <StackPanel Margin="28,24,28,24" MaxWidth="640" HorizontalAlignment="Left">
-            <TextBlock Text="{loc:Tr fp.title}" FontSize="28" FontWeight="Bold" Margin="0,0,0,2" />
-            <TextBlock x:Name="CountText" Text="{loc:Tr common.loading}" Opacity="0.6" Margin="0,0,0,20" />
-
-            <v:PairingBanner x:Name="PairBanner" />
-
-            <!-- 认证指纹 -->
-            <ui:Card Margin="0,0,0,14" Padding="18">
-                <StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                        <ui:SymbolIcon Foreground="{DynamicResource TextFillColorPrimaryBrush}" Symbol="Fingerprint24" FontSize="18" Margin="0,0,8,0" />
-                        <TextBlock Text="{loc:Tr fp.auth}" FontWeight="SemiBold" VerticalAlignment="Center" />
+        <c:PageContainer>
+            <StackPanel>
+                <!-- 页头：标题 + 说明，命令靠右上；窄到放不下时命令折到说明下面 -->
+                <c:AdaptiveRow Margin="0,0,0,20" MinMainWidth="300" TrailingAlignment="Top">
+                    <StackPanel>
+                        <TextBlock Text="{loc:Tr fp.title}" Style="{StaticResource PageTitle}" />
+                        <TextBlock x:Name="CountText" Text="{loc:Tr common.loading}" Style="{StaticResource PageSubtitle}" />
                     </StackPanel>
-                    <TextBlock Text="{loc:Tr fp.auth.desc}" Opacity="0.6" FontSize="12" Margin="0,0,0,10" />
-                    <ItemsControl x:Name="SlotPanel" />
-                </StackPanel>
-            </ui:Card>
+                    <ui:Button Content="{loc:Tr common.refresh}" Icon="{ui:SymbolIcon ArrowClockwise24}"
+                               Appearance="Secondary" Margin="0,6,0,0" Click="OnRefreshClick" />
+                </c:AdaptiveRow>
 
-            <!-- 切换指纹 -->
-            <ui:Card Margin="0,0,0,14" Padding="18">
-                <StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                        <ui:SymbolIcon Foreground="{DynamicResource TextFillColorPrimaryBrush}" Symbol="ArrowSwap24" FontSize="18" Margin="0,0,8,0" />
-                        <TextBlock Text="{loc:Tr fp.switch}" FontWeight="SemiBold" VerticalAlignment="Center" />
-                    </StackPanel>
-                    <TextBlock Text="{loc:Tr fp.switch.desc}"
-                               Opacity="0.6" FontSize="12" Margin="0,0,0,10" TextWrapping="Wrap" />
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock x:Name="SwitchState" Text="—" Width="140" VerticalAlignment="Center" />
-                        <ui:Button x:Name="SwitchBtn" Content="{loc:Tr fp.switch.enroll}" Click="OnSwitchClick" />
-                    </StackPanel>
-                </StackPanel>
-            </ui:Card>
+                <v:PairingBanner x:Name="PairBanner" />
 
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                <ui:Button Content="{loc:Tr common.refresh}" Icon="{ui:SymbolIcon ArrowClockwise24}" Appearance="Secondary" Click="OnRefreshClick" />
+                <!-- 认证指纹 -->
+                <c:SettingCard Icon="Fingerprint24" Title="{loc:Tr fp.auth}" Description="{loc:Tr fp.auth.desc}">
+                    <ItemsControl x:Name="SlotPanel" Margin="0,12,0,0" Focusable="False" />
+                </c:SettingCard>
+
+                <!-- 切换指纹：录入 / 删除在标题行右侧，当前状态另起一行
+                     （状态也挤在右侧的话，长按钮文案会把左边的说明压成窄窄一条） -->
+                <c:SettingCard Icon="ArrowSwap24" Title="{loc:Tr fp.switch}" Description="{loc:Tr fp.switch.desc}">
+                    <c:SettingCard.Action>
+                        <ui:Button x:Name="SwitchBtn" Content="{loc:Tr fp.switch.enroll}" MinWidth="84" Click="OnSwitchClick" />
+                    </c:SettingCard.Action>
+                    <TextBlock x:Name="SwitchState" Text="—" Style="{StaticResource BodyStrong}" Margin="38,8,0,0" />
+                </c:SettingCard>
+
+                <TextBlock x:Name="StatusText" Margin="0,8,0,0" Style="{StaticResource StatusLine}" />
             </StackPanel>
-            <TextBlock x:Name="StatusText" Margin="0,12,0,0" Opacity="0.8" TextWrapping="Wrap" />
-        </StackPanel>
+        </c:PageContainer>
     </ScrollViewer>
 </Page>

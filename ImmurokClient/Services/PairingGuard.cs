@@ -31,13 +31,10 @@ public static class PairingGuard
     {
         if (await IsPairedAsync()) return true;
 
-        MessageBoxResult go = owner is null
-            ? MessageBox.Show(T("msg.pair.required_body"), T("msg.pair.required_title"),
-                MessageBoxButton.OKCancel, MessageBoxImage.Information)
-            : MessageBox.Show(owner, T("msg.pair.required_body"), T("msg.pair.required_title"),
-                MessageBoxButton.OKCancel, MessageBoxImage.Information);
+        bool go = Views.MessageDialog.Confirm(owner, T("msg.pair.required_title"), T("msg.pair.required_body"),
+            Views.MessageKind.Info);
 
-        if (go == MessageBoxResult.OK) NavigateToPairing();
+        if (go) NavigateToPairing();
         return false;
     }
 

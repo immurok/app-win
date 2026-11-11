@@ -4,120 +4,85 @@
       xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
       xmlns:loc="clr-namespace:ImmurokClient.Localization"
       xmlns:h="clr-namespace:ImmurokClient.Helpers"
+      xmlns:c="clr-namespace:ImmurokClient.Controls"
       Title="{loc:Tr nav.setup}">
     <ScrollViewer VerticalScrollBarVisibility="Auto" h:WheelScroll.Enabled="True">
-        <StackPanel Margin="28,24,28,24" MaxWidth="640" HorizontalAlignment="Left">
-            <TextBlock Text="{loc:Tr nav.setup}" FontSize="28" FontWeight="Bold" Margin="0,0,0,2" />
-            <TextBlock Text="{loc:Tr setup.pass}" Opacity="0.6" Margin="0,0,0,20" />
-
-            <!-- 设置向导：首启自动弹出，之后从这里或托盘菜单随时再开 -->
-            <ui:Card Margin="0,0,0,14" Padding="18">
-                <StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                        <ui:SymbolIcon Foreground="{DynamicResource TextFillColorPrimaryBrush}" Symbol="HatGraduation24" FontSize="18" Margin="0,0,8,0" />
-                        <TextBlock Text="{loc:Tr setup.wizard}" FontWeight="SemiBold" VerticalAlignment="Center" />
-                    </StackPanel>
-                    <TextBlock Text="{loc:Tr setup.wizard.desc}" Opacity="0.6" FontSize="12" Margin="0,0,0,10" TextWrapping="Wrap" />
-                    <ui:Button Content="{loc:Tr setup.wizard.open}" Icon="{ui:SymbolIcon HatGraduation24}"
-                               Appearance="Secondary" Click="OnOpenWizardClick" />
+        <c:PageContainer>
+            <StackPanel>
+                <StackPanel Margin="0,0,0,20">
+                    <TextBlock Text="{loc:Tr nav.setup}" Style="{StaticResource PageTitle}" />
+                    <TextBlock Text="{loc:Tr setup.pass}" Style="{StaticResource PageSubtitle}" />
                 </StackPanel>
-            </ui:Card>
 
-            <!-- 语言 -->
-            <ui:Card Margin="0,0,0,14" Padding="18">
-                <StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                        <ui:SymbolIcon Foreground="{DynamicResource TextFillColorPrimaryBrush}" Symbol="Globe24" FontSize="18" Margin="0,0,8,0" />
-                        <TextBlock Text="{loc:Tr setup.language}" FontWeight="SemiBold" VerticalAlignment="Center" />
-                    </StackPanel>
-                    <TextBlock Text="{loc:Tr setup.language.desc}" Opacity="0.6" FontSize="12" Margin="0,0,0,10" TextWrapping="Wrap" />
-                    <ComboBox x:Name="LangCombo" Width="220" HorizontalAlignment="Left"
-                              DisplayMemberPath="Name" SelectedValuePath="Code"
-                              SelectionChanged="OnLanguageChanged" />
-                </StackPanel>
-            </ui:Card>
+                <!-- 设置向导：首启自动弹出，之后从这里或托盘菜单随时再开 -->
+                <c:SettingCard Icon="HatGraduation24" Title="{loc:Tr setup.wizard}"
+                               Description="{loc:Tr setup.wizard.desc}" Margin="0,0,0,4">
+                    <c:SettingCard.Action>
+                        <ui:Button Content="{loc:Tr setup.wizard.open}" Appearance="Secondary" Click="OnOpenWizardClick" />
+                    </c:SettingCard.Action>
+                </c:SettingCard>
 
-            <!-- 开机自启 -->
-            <ui:Card Margin="0,0,0,14" Padding="18">
-                <StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                        <ui:SymbolIcon Foreground="{DynamicResource TextFillColorPrimaryBrush}" Symbol="Power24" FontSize="18" Margin="0,0,8,0" />
-                        <TextBlock Text="{loc:Tr setup.autostart}" FontWeight="SemiBold" VerticalAlignment="Center" />
-                    </StackPanel>
-                    <TextBlock Text="{loc:Tr setup.autostart.desc}"
-                               Opacity="0.6" FontSize="12" Margin="0,0,0,10" TextWrapping="Wrap" />
-                    <ui:ToggleSwitch x:Name="AutoStartToggle" Content="{loc:Tr setup.autostart.enable}" Click="OnAutoStartToggle" />
+                <!-- 语言 -->
+                <c:SettingCard Icon="Globe24" Title="{loc:Tr setup.language}"
+                               Description="{loc:Tr setup.language.desc}" Margin="0,0,0,4">
+                    <c:SettingCard.Action>
+                        <ComboBox x:Name="LangCombo" MinWidth="180"
+                                  DisplayMemberPath="Name" SelectedValuePath="Code"
+                                  AutomationProperties.Name="{loc:Tr setup.language}"
+                                  SelectionChanged="OnLanguageChanged" />
+                    </c:SettingCard.Action>
+                </c:SettingCard>
+
+                <!-- 开机自启：开关在右侧，卡片标题就是它的名字，不再另带一行「启用」文字 -->
+                <c:SettingCard Icon="Power24" Title="{loc:Tr setup.autostart}"
+                               Description="{loc:Tr setup.autostart.desc}" Margin="0,0,0,16">
+                    <c:SettingCard.Action>
+                        <ui:ToggleSwitch x:Name="AutoStartToggle" Click="OnAutoStartToggle"
+                                         AutomationProperties.Name="{loc:Tr setup.autostart.enable}" />
+                    </c:SettingCard.Action>
                     <TextBlock x:Name="AutoStartFail" Text="{loc:Tr setup.autostart.fail}"
-                               Foreground="#FFE0A030" FontSize="12" Margin="0,6,0,0"
-                               TextWrapping="Wrap" Visibility="Collapsed" />
-                </StackPanel>
-            </ui:Card>
+                               Style="{StaticResource CaptionCaution}" Margin="38,6,0,0" Visibility="Collapsed" />
+                </c:SettingCard>
 
-            <ui:Card Margin="0,0,0,14" Padding="18">
-                <StackPanel x:Name="PassCardPanel">
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                        <ui:SymbolIcon Foreground="{DynamicResource TextFillColorPrimaryBrush}" Symbol="Key24" FontSize="18" Margin="0,0,8,0" />
-                        <TextBlock Text="{loc:Tr setup.pass.label}" FontWeight="SemiBold" VerticalAlignment="Center" />
-                    </StackPanel>
-                    <TextBlock Text="{loc:Tr setup.pass.desc}"
-                               Opacity="0.6" FontSize="12" Margin="0,0,0,10" TextWrapping="Wrap" />
+                <!-- 解锁密码 -->
+                <c:SettingCard Icon="Key24" Title="{loc:Tr setup.pass.label}"
+                               Description="{loc:Tr setup.pass.desc}" Margin="0,0,0,4">
+                    <StackPanel x:Name="PassCardPanel" Margin="38,10,0,0">
+                        <!-- 状态 + 操作：已配置时悬停显示清除；未配置时始终显示设置。
+                             整行套一层 Background="Transparent" 的 Border 当悬停区：
+                             StackPanel 默认 Background=null 不参与命中测试，鼠标走到
+                             文字与按钮之间的空隙时会「悬空」，IsMouseOver 变 false，
+                             按钮还没够到就先隐藏了。透明背景才会被命中测试。 -->
+                        <Border x:Name="PassStatusRow" Background="Transparent" MinHeight="32"
+                                MouseEnter="OnPassRowHover" MouseLeave="OnPassRowHover">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock x:Name="PassStateText" Text="{loc:Tr status.querying}"
+                                           Style="{StaticResource BodyStrong}" VerticalAlignment="Center" />
+                                <ui:Button x:Name="ClearBtn" Content="{loc:Tr common.clear}" Icon="{ui:SymbolIcon Delete24}"
+                                           Appearance="Secondary" Click="OnClearClick" Margin="12,0,0,0"
+                                           VerticalAlignment="Center" Visibility="Collapsed" Opacity="0" IsHitTestVisible="False" />
+                                <ui:Button x:Name="SetBtn" Content="{loc:Tr setup.pass.set}" Icon="{ui:SymbolIcon Key24}"
+                                           Appearance="Primary" Click="OnSetClick" Margin="12,0,0,0"
+                                           VerticalAlignment="Center" Visibility="Collapsed" />
+                            </StackPanel>
+                        </Border>
 
-                    <!-- 状态 + 操作：已配置时悬停显示清除；未配置时始终显示设置。
-                         整行套一层 Background="Transparent" 的 Border 当悬停区：
-                         StackPanel 默认 Background=null 不参与命中测试，鼠标走到
-                         文字与按钮之间的空隙时会「悬空」，IsMouseOver 变 false，
-                         按钮还没够到就先隐藏了。透明背景才会被命中测试。 -->
-                    <Border x:Name="PassStatusRow" Background="Transparent"
-                            Padding="0,3" Margin="0,0,0,8"
-                            MouseEnter="OnPassRowHover" MouseLeave="OnPassRowHover">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock x:Name="PassStateText" Text="{loc:Tr status.querying}" VerticalAlignment="Center" Opacity="0.85" />
-                            <ui:Button x:Name="ClearBtn" Content="{loc:Tr common.clear}" Icon="{ui:SymbolIcon Delete24}"
-                                       Appearance="Secondary" Click="OnClearClick" Margin="12,0,0,0"
-                                       VerticalAlignment="Center" Visibility="Collapsed" Opacity="0" IsHitTestVisible="False" />
-                            <ui:Button x:Name="SetBtn" Content="{loc:Tr setup.pass.set}" Icon="{ui:SymbolIcon Key24}"
-                                       Appearance="Primary" Click="OnSetClick" Margin="12,0,0,0"
-                                       VerticalAlignment="Center" Visibility="Collapsed" />
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                            <TextBlock Text="{loc:Tr setup.pass.account}" Style="{StaticResource Caption}" VerticalAlignment="Center" />
+                            <TextBlock x:Name="UserText" Text="" Style="{StaticResource Caption}" FontWeight="SemiBold" Margin="4,0,0,0"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" VerticalAlignment="Center" />
                         </StackPanel>
-                    </Border>
-
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                        <TextBlock Text="{loc:Tr setup.pass.account}" VerticalAlignment="Center" Opacity="0.7" />
-                        <TextBlock x:Name="UserText" Text="" VerticalAlignment="Center" FontWeight="SemiBold" />
+                        <TextBlock x:Name="PassHint" Text="" Margin="0,6,0,0" Style="{StaticResource StatusLine}" FontSize="12" />
                     </StackPanel>
-                    <TextBlock x:Name="PassHint" Text="" Margin="0,8,0,0" Opacity="0.7" FontSize="12" />
-                </StackPanel>
-            </ui:Card>
+                </c:SettingCard>
 
-            <ui:Card Margin="0,0,0,14" Padding="18">
-                <StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                        <ui:SymbolIcon Foreground="{DynamicResource TextFillColorPrimaryBrush}" Symbol="ShieldKeyhole24" FontSize="18" Margin="0,0,8,0" />
-                        <TextBlock Text="Credential Provider" FontWeight="SemiBold" VerticalAlignment="Center" />
-                    </StackPanel>
-                    <TextBlock Text="{loc:Tr setup.cp.desc}"
-                               Opacity="0.6" FontSize="12" Margin="0,4,0,0" TextWrapping="Wrap" />
-                </StackPanel>
-            </ui:Card>
+                <c:SettingCard Icon="ShieldKeyhole24" Title="Credential Provider"
+                               Description="{loc:Tr setup.cp.desc}" Margin="0,0,0,4" />
 
-            <ui:Card Margin="0,0,0,14" Padding="18">
-                <StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                        <ui:SymbolIcon Foreground="{DynamicResource TextFillColorPrimaryBrush}" Symbol="Key24" FontSize="18" Margin="0,0,8,0" />
-                        <TextBlock Text="SSH agent" FontWeight="SemiBold" VerticalAlignment="Center" />
-                    </StackPanel>
-                    <TextBlock Text="{loc:Tr setup.ssh.desc}"
-                               Opacity="0.6" FontSize="12" Margin="0,4,0,8" TextWrapping="Wrap" />
-                    <ui:ToggleSwitch x:Name="SshAgentToggle" Content="{loc:Tr setup.ssh.enable}" Click="OnSshAgentToggle" />
-                    <TextBlock x:Name="SshAgentHint"
-                               Text="{loc:Tr setup.ssh.note}"
-                               Opacity="0.55" FontSize="11" Margin="0,8,0,0" TextWrapping="Wrap" FontFamily="Consolas" />
-                </StackPanel>
-            </ui:Card>
-
-            <ui:InfoBar Title="{loc:Tr dialog.tip}"
-                        Message="{loc:Tr setup.pass.hint}"
-                        Severity="Informational" IsOpen="True" IsClosable="False" />
-        </StackPanel>
+                <ui:InfoBar Title="{loc:Tr dialog.tip}" Margin="0,8,0,0"
+                            Message="{loc:Tr setup.pass.hint}"
+                            Severity="Informational" IsOpen="True" IsClosable="False" />
+            </StackPanel>
+        </c:PageContainer>
     </ScrollViewer>
 </Page>

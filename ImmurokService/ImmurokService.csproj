@@ -35,6 +35,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- 单元测试要碰 Wsl/ 下的 internal 纯逻辑（前导行解析、HCS 结果解析）。 -->
+    <InternalsVisibleTo Include="ImmurokTests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- 开发期日志配置，拷到输出目录供 Host 读取 -->
     <None Update="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

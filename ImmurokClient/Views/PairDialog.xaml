@@ -24,12 +24,11 @@
                  由 ApplyStage 填充；换阶段时重建，让动画从头起动。 -->
             <ContentControl x:Name="IllustrationHost" HorizontalAlignment="Center" Margin="0,0,0,8" />
 
-            <TextBlock x:Name="HeadText" Text="" FontSize="13" Opacity="0.7"
-                       TextWrapping="Wrap" Margin="0,0,0,14" />
+            <TextBlock x:Name="HeadText" Text="" Style="{StaticResource BodySecondary}" Margin="0,0,0,14" />
 
             <!-- 步骤 1。首次配对没有指纹这一步，整卡隐藏，第二卡的序号改成 1。 -->
-            <Border x:Name="Step1Card" CornerRadius="8" Padding="14,12" Margin="0,0,0,8"
-                    Background="#14808080">
+            <Border x:Name="Step1Card" CornerRadius="6" Padding="14,12" Margin="0,0,0,8"
+                    Background="{DynamicResource SubtleFillColorSecondaryBrush}">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
@@ -37,19 +36,19 @@
                     </Grid.ColumnDefinitions>
                     <Border x:Name="Step1Badge" Grid.Column="0" Width="30" Height="30" CornerRadius="15"
                             Margin="0,0,12,0" VerticalAlignment="Top">
-                        <TextBlock x:Name="Step1Num" Text="1" FontSize="14" FontWeight="Bold"
+                        <TextBlock x:Name="Step1Num" Text="1" FontSize="14" FontWeight="SemiBold"
                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
                     <StackPanel Grid.Column="1">
                         <TextBlock x:Name="Step1Title" Text="" FontSize="14" TextWrapping="Wrap" />
-                        <TextBlock x:Name="Step1Hint" Text="" FontSize="12" Opacity="0.6"
-                                   TextWrapping="Wrap" Margin="0,3,0,0" />
+                        <TextBlock x:Name="Step1Hint" Text="" Style="{StaticResource Caption}" Margin="0,3,0,0" />
                     </StackPanel>
                 </Grid>
             </Border>
 
             <!-- 步骤 2（首次配对时它就是唯一一步） -->
-            <Border x:Name="Step2Card" CornerRadius="8" Padding="14,12" Background="#14808080">
+            <Border x:Name="Step2Card" CornerRadius="6" Padding="14,12"
+                    Background="{DynamicResource SubtleFillColorSecondaryBrush}">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
@@ -57,22 +56,21 @@
                     </Grid.ColumnDefinitions>
                     <Border x:Name="Step2Badge" Grid.Column="0" Width="30" Height="30" CornerRadius="15"
                             Margin="0,0,12,0" VerticalAlignment="Top">
-                        <TextBlock x:Name="Step2Num" Text="2" FontSize="14" FontWeight="Bold"
+                        <TextBlock x:Name="Step2Num" Text="2" FontSize="14" FontWeight="SemiBold"
                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
                     <StackPanel Grid.Column="1">
                         <TextBlock x:Name="Step2Title" Text="" FontSize="14" TextWrapping="Wrap" />
-                        <TextBlock x:Name="Step2Hint" Text="" FontSize="12" Opacity="0.6"
-                                   TextWrapping="Wrap" Margin="0,3,0,0" />
+                        <TextBlock x:Name="Step2Hint" Text="" Style="{StaticResource Caption}" Margin="0,3,0,0" />
                     </StackPanel>
                 </Grid>
             </Border>
 
-            <TextBlock x:Name="StatusText" Text="" FontSize="12" Opacity="0.8"
-                       TextWrapping="Wrap" Margin="0,14,0,0" MinHeight="32" />
+            <TextBlock x:Name="StatusText" Text="" Style="{StaticResource Caption}"
+                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,14,0,0" MinHeight="32" />
             <!-- 按钮门客户端取消不了，只有长按设备或等 30 秒：等按钮时把出路写在脚注里。 -->
-            <TextBlock x:Name="CancelHint" Text="{loc:Tr pair.dlg.cancelhint}" FontSize="11" Opacity="0.55"
-                       TextWrapping="Wrap" Margin="0,4,0,0" Visibility="Collapsed" />
+            <TextBlock x:Name="CancelHint" Text="{loc:Tr pair.dlg.cancelhint}" Style="{StaticResource CaptionTertiary}"
+                       Margin="0,4,0,0" Visibility="Collapsed" />
 
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
                 <ui:Button x:Name="CloseBtn" Content="{loc:Tr common.cancel}"

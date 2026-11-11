@@ -1,7 +1,7 @@
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Media;
+using ImmurokClient.Helpers;
 using ImmurokClient.Localization;
 using ImmurokClient.Services;
 using Wpf.Ui.Controls;
@@ -18,13 +18,6 @@ namespace ImmurokClient.Views;
 public partial class SecurityBanner : UserControl
 {
     private static string T(string k, params object[] a) => Loc.Instance.T(k, a);
-
-    private static readonly Brush GreenBg = (Brush)new BrushConverter().ConvertFromString("#2230B050")!;
-    private static readonly Brush GreenBorder = (Brush)new BrushConverter().ConvertFromString("#5530B050")!;
-    private static readonly Brush GreenFg = (Brush)new BrushConverter().ConvertFromString("#FF30B050")!;
-    private static readonly Brush OrangeBg = (Brush)new BrushConverter().ConvertFromString("#22E0A030")!;
-    private static readonly Brush OrangeBorder = (Brush)new BrushConverter().ConvertFromString("#55E0A030")!;
-    private static readonly Brush OrangeFg = (Brush)new BrushConverter().ConvertFromString("#FFE0A030")!;
 
     private SecurityStatusInfo? _last;
 
@@ -54,10 +47,9 @@ public partial class SecurityBanner : UserControl
             bool collapsed = ClientSettings.SecurityBannerCollapsed;
             Bar.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
             Shield.Visibility = collapsed ? Visibility.Visible : Visibility.Collapsed;
-            Bar.Background = GreenBg;
-            Bar.BorderBrush = GreenBorder;
+            Bar.SetResourceReference(Border.BackgroundProperty, Ui.SuccessBackground);
             Icon.Symbol = SymbolRegular.ShieldCheckmark24;
-            Icon.Foreground = GreenFg;
+            Icon.SetResourceReference(ForegroundProperty, Ui.Success);
             Text.Text = T("security.banner.ok");
             DetailsButton.Visibility = Visibility.Collapsed;
             CloseButton.Visibility = Visibility.Visible;
@@ -67,10 +59,9 @@ public partial class SecurityBanner : UserControl
         // 有异常：不可收起。
         Bar.Visibility = Visibility.Visible;
         Shield.Visibility = Visibility.Collapsed;
-        Bar.Background = OrangeBg;
-        Bar.BorderBrush = OrangeBorder;
+        Bar.SetResourceReference(Border.BackgroundProperty, Ui.CautionBackground);
         Icon.Symbol = SymbolRegular.ShieldError24;
-        Icon.Foreground = OrangeFg;
+        Icon.SetResourceReference(ForegroundProperty, Ui.Caution);
         var p = _last.FirstProblem;
         Text.Text = p?.BannerKey is { } k ? T(k) : T("security.banner.details");
         DetailsButton.Content = T("security.banner.details");

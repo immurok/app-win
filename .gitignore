@@ -19,3 +19,7 @@ packaging/.tools/
 
 # 其他
 *.log
+
+# WSL2 支持：payload 是 Linux 构建产物（wsl/build-payload.sh），桥的 cargo 输出目录
+packaging/wsl/*.tar.gz
+wsl/bridge/target/

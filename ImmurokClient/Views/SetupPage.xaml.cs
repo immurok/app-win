@@ -71,8 +71,6 @@ public partial class SetupPage : Page
         UpdateClearButtonReveal(PassStatusRow.IsMouseOver);
 
         _loading = true;
-        string? sa = await AppServices.Pipe.SshAgentStatusAsync();
-        SshAgentToggle.IsChecked = sa?.Contains("ON") == true;
         // 自启是纯本地设置（HKCU\Run），不经服务，服务离线时也照常可读可改。
         AutoStartToggle.IsChecked = AutoStart.IsEnabled;
         AutoStartFail.Visibility = Visibility.Collapsed;
@@ -109,26 +107,6 @@ public partial class SetupPage : Page
             AutoStartToggle.IsChecked = !on;
             _loading = false;
         }
-    }
-
-    private async void OnSshAgentToggle(object sender, RoutedEventArgs e)
-    {
-        if (_loading) return;
-        bool on = SshAgentToggle.IsChecked == true;
-        SshAgentToggle.IsEnabled = false;
-        SshAgentHint.Text = T("msg.ssh.working");
-        try
-        {
-            var res = await SshAgentSwitch.SetAsync(on);
-            SshAgentHint.Text = SshAgentSwitch.Describe(res, on);
-            if (!res.Ok)
-            {
-                _loading = true;
-                SshAgentToggle.IsChecked = !on;
-                _loading = false;
-            }
-        }
-        finally { SshAgentToggle.IsEnabled = true; }
     }
 
     private async void OnSetClick(object sender, RoutedEventArgs e)

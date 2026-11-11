@@ -1,0 +1,20 @@
+[package]
+name = "immurok-wsl-bridge"
+version = "0.2.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "WSL2 side of immurok for Windows: forwards /run/immurok/{pam,agent}.sock to the Windows service over Hyper-V sockets"
+publish = false
+
+# Standalone on purpose: this crate belongs to the Windows app (nothing on a
+# native Linux install uses it) and builds without the app-linux-rs workspace.
+[workspace]
+
+[dependencies]
+libc = "0.2"
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
+panic = "abort"

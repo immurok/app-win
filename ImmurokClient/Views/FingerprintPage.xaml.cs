@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using ImmurokClient.Helpers;
 using ImmurokClient.Localization;
 using ImmurokClient.Services;
 using ImmurokCommon.Protocol;
@@ -74,39 +75,55 @@ public partial class FingerprintPage : Page
         SwitchBtn.Content = _switchEnrolled ? T("msg.fp.switch_delete") : T("fp.switch.enroll");
     }
 
+    /// <summary>一行一个槽位：左侧状态图标 + 槽位名 + 状态，操作按钮靠右对齐。</summary>
     private UIElement BuildRow(byte slot, bool enrolled)
     {
-        var border = new Border
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto, MinWidth = 72 });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        // 已录入 = 实心绿勾；空槽 = 灰色空圈。一眼能数出录了几枚。
+        var icon = new Wpf.Ui.Controls.SymbolIcon
         {
-            CornerRadius = new CornerRadius(6),
-            Padding = new Thickness(12, 8, 12, 8),
-            Margin = new Thickness(0, 0, 0, 6),
-            Background = new System.Windows.Media.SolidColorBrush(
-                System.Windows.Media.Color.FromArgb(0x14, 0x80, 0x80, 0x80)),
+            Symbol = enrolled ? Wpf.Ui.Controls.SymbolRegular.CheckmarkCircle24 : Wpf.Ui.Controls.SymbolRegular.Circle24,
+            Filled = enrolled,
         };
-        var panel = new StackPanel { Orientation = Orientation.Horizontal };
-        panel.Children.Add(new TextBlock { Text = T("msg.fp.slot", slot), Width = 70, VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.SemiBold });
-        panel.Children.Add(new TextBlock
+        icon.SetResourceReference(ForegroundProperty, enrolled ? Ui.Success : Ui.Tertiary);
+        grid.Children.Add(new Viewbox
         {
-            Text = enrolled ? T("msg.fp.enrolled") : T("msg.slot.empty"),
-            Width = 90,
-            Opacity = enrolled ? 1.0 : 0.55,
-            VerticalAlignment = VerticalAlignment.Center,
+            Child = icon, Width = 18, Height = 18,
+            Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center,
         });
 
-        var btn = new Wpf.Ui.Controls.Button { Content = enrolled ? T("common.delete") : T("msg.fp.enroll_btn"), MinWidth = 84 };
-        if (enrolled)
+        var name = Ui.Text(T("msg.fp.slot", slot), "BodyStrong");
+        name.TextWrapping = TextWrapping.NoWrap;
+        name.VerticalAlignment = VerticalAlignment.Center;
+        name.Margin = new Thickness(0, 0, 12, 0);
+        Grid.SetColumn(name, 1);
+        grid.Children.Add(name);
+
+        var state = Ui.Text(enrolled ? T("msg.fp.enrolled") : T("msg.slot.empty"), enrolled ? "Body" : "BodySecondary");
+        state.TextWrapping = TextWrapping.NoWrap;
+        state.TextTrimming = TextTrimming.CharacterEllipsis;
+        state.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(state, 2);
+        grid.Children.Add(state);
+
+        var btn = new Wpf.Ui.Controls.Button
         {
-            btn.Appearance = Wpf.Ui.Controls.ControlAppearance.Secondary;
-            btn.Click += async (_, _) => await DeleteAsync(slot);
-        }
-        else
-        {
-            btn.Click += async (_, _) => await EnrollAsync(slot);
-        }
-        panel.Children.Add(btn);
-        border.Child = panel;
-        return border;
+            Content = enrolled ? T("common.delete") : T("msg.fp.enroll_btn"),
+            MinWidth = 84,
+            Appearance = Wpf.Ui.Controls.ControlAppearance.Secondary,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        if (enrolled) btn.Click += async (_, _) => await DeleteAsync(slot);
+        else btn.Click += async (_, _) => await EnrollAsync(slot);
+        Grid.SetColumn(btn, 3);
+        grid.Children.Add(btn);
+
+        return Ui.Row(grid);
     }
 
     // ---- 认证指纹 ----
@@ -120,10 +137,9 @@ public partial class FingerprintPage : Page
         // 不先说明的话，用户会在该换手指的时候继续按旧手指（对齐 macOS enroll.confirm.newfinger）。
         if (_enrolledCount > 0)
         {
-            var go = MessageBox.Show(
-                T("msg.enroll.newfinger_message"),
-                T("msg.enroll.newfinger_title"), MessageBoxButton.OKCancel, MessageBoxImage.Information);
-            if (go != MessageBoxResult.OK) return;
+            if (!MessageDialog.Confirm(Window.GetWindow(this), T("msg.enroll.newfinger_title"),
+                    T("msg.enroll.newfinger_message"), MessageKind.Info))
+                return;
         }
 
         _busy = true;

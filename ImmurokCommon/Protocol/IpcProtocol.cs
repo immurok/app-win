@@ -19,6 +19,11 @@ public static class IpcProtocol
     public const string Pass        = "PASS";          // PASS:STATUS | PASS:SET:<b64user>:<b64pass> | PASS:CLEAR
     public const string Key         = "KEY";           // KEY:LIST:<cat> | KEY:OTP:<idx> | KEY:DELETE:<cat>:<idx> | KEY:SSHPUB:<idx>
     public const string SshAgent    = "SSHAGENT";      // SSHAGENT:STATUS -> OK:ON|OFF ; SSHAGENT:ON -> OK:TAKEN|ABSENT|TAKEOVER_FAILED|CONTENDED ; SSHAGENT:OFF -> OK:RESTORED|NONE|RESTORE_FAILED
+    /// <summary>
+    /// WSL2 支持开关。WSL:STATUS -&gt; OK:ON|OFF；WSL:ON -&gt; OK:&lt;token 64hex&gt;（幂等，客户端拿 token 去装进 WSL）；
+    /// WSL:OFF -&gt; OK（停监听、删 token）。ON / OFF 只给可信客户端 + owner。
+    /// </summary>
+    public const string Wsl         = "WSL";
     public const string AgentApprove = "AGENT_APPROVE"; // 本期暂不实现
     /// <summary>取消进行中的指纹门（认证弹窗点「取消」时用），让设备立刻停止闪灯等待。-&gt; OK</summary>
     public const string CancelGate  = "CANCELGATE";
@@ -42,6 +47,7 @@ public static class IpcProtocol
     // KEY 子命令（密钥库：cat 0=SSH 1=OTP 2=API）
     public const string KeyList   = "LIST";    // -> OK:<idx,b64name,b64extra>;...（extra=OTP服务/空）
     public const string KeyOtp    = "OTP";     // KEY:OTP:<idx> -> OK:<6位> | DENY
+    public const string KeyApi    = "API";     // KEY:API:<idx> -> OK:<b64value> | DENY（含指纹门；只给可信客户端 + owner）
     public const string KeyDelete = "DELETE";  // KEY:DELETE:<cat>:<idx> -> OK | DENY
     public const string KeySshPub = "SSHPUB";  // KEY:SSHPUB:<idx> -> OK:<b64 authkey行>:<b64 指纹>
     public const string KeyAddOtp = "ADDOTP";  // KEY:ADDOTP:<b64name>:<b64service>:<b64secretBase32> -> OK | DENY

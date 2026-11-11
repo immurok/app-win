@@ -30,6 +30,7 @@ public sealed class CliServer : IAsyncDisposable
     private readonly AppSettings _settings;
     private readonly OwnerStore _owner;
     private readonly CallerPolicy _policy;
+    private readonly KeyQueries _keys;
     private CancellationTokenSource? _cts;
     private Task? _loop;
 
@@ -39,8 +40,9 @@ public sealed class CliServer : IAsyncDisposable
     public bool Contended { get; private set; }
 
     public CliServer(ILogger<CliServer> log, BleManager ble, AppSettings settings, OwnerStore owner, CallerPolicy policy,
-        SecurityStatus status)
+        SecurityStatus status, KeyQueries keys)
     {
+        _keys = keys;
         _log = log;
         _ble = ble;
         _settings = settings;
@@ -174,7 +176,7 @@ public sealed class CliServer : IAsyncDisposable
 
         if (cmd.StartsWith("LIST:", StringComparison.Ordinal))
         {
-            int cat = CatOf(cmd[5..]);
+            int cat = KeyQueries.CatOf(cmd[5..]);
             if (cat < 0) return "ERROR:BAD_CATEGORY";
             // 列表也只给 owner（2026-09-06 用户决定）：值拿不到，名字也没必要给另一个账号看。
             if (DenyIfNotOwner(caller, "LIST") is { } denied) return denied;
@@ -186,7 +188,7 @@ public sealed class CliServer : IAsyncDisposable
             string rest = cmd[4..];
             int sep = rest.IndexOf(':');
             if (sep <= 0) return "ERROR:BAD_REQUEST";
-            int cat = CatOf(rest[..sep]);
+            int cat = KeyQueries.CatOf(rest[..sep]);
             string name = rest[(sep + 1)..];
             if (cat < 0) return "ERROR:BAD_CATEGORY";
             if (name.Length == 0) return "ERROR:BAD_REQUEST";
@@ -216,69 +218,16 @@ public sealed class CliServer : IAsyncDisposable
         return "DENY:NOT_OWNER";
     }
 
-    private static int CatOf(string s) => s.Trim() switch
-    {
-        "ssh" => BleManager.CatSsh,
-        "otp" => BleManager.CatOtp,
-        "api" => BleManager.CatApi,
-        _ => -1,
-    };
-
     private async Task<string> HandleListAsync(byte cat)
     {
-        int count = await _ble.GetKeyCountAsync(cat).ConfigureAwait(false);
-        var names = new List<string>();
-        for (byte i = 0; i < count; i++)
-        {
-            string? n = await NameAtAsync(cat, i).ConfigureAwait(false);
-            if (!string.IsNullOrEmpty(n)) names.Add(n);
-        }
+        var names = await _keys.ListNamesAsync(cat).ConfigureAwait(false);
         return names.Count == 0 ? "OK" : "OK\n" + string.Join("\n", names);
     }
 
     private async Task<string> HandleGetAsync(byte cat, string name)
     {
-        int idx = await FindIndexAsync(cat, name).ConfigureAwait(false);
-        if (idx < 0) return "ERROR:NOT_FOUND";
-
-        if (cat == BleManager.CatOtp)
-        {
-            if (!_settings.OtpEnabled) return "ERROR:DISABLED"; // 功能开关：OTP 已关闭
-            string? code = await _ble.GetOtpCodeAsync((byte)idx).ConfigureAwait(false);
-            return code is null ? "ERROR:DENY" : "OK:" + code;
-        }
-        if (cat == BleManager.CatApi)
-        {
-            byte[]? entry = await _ble.ReadKeyEntryAsync(BleManager.CatApi, (byte)idx).ConfigureAwait(false);
-            if (entry is null || entry.Length <= 32) return "ERROR:READ_FAILED";
-            // api_entry: name[32] + key[128]。取 key 区，截到首个 NUL。
-            int end = 32;
-            while (end < entry.Length && entry[end] != 0) end++;
-            string value = Encoding.UTF8.GetString(entry, 32, end - 32);
-            return value.Length == 0 ? "ERROR:EMPTY" : "OK:" + value;
-        }
-        // ssh：返回 OpenSSH 公钥行（不导出私钥）
-        byte[]? pub = await _ble.SshGetPubAsync((byte)idx).ConfigureAwait(false);
-        if (pub is null) return "ERROR:READ_FAILED";
-        return "OK:" + BleManager.SshAuthorizedKey(pub, name);
-    }
-
-    private async Task<int> FindIndexAsync(byte cat, string name)
-    {
-        int count = await _ble.GetKeyCountAsync(cat).ConfigureAwait(false);
-        for (byte i = 0; i < count; i++)
-        {
-            string? n = await NameAtAsync(cat, i).ConfigureAwait(false);
-            if (n == name) return i;
-        }
-        return -1;
-    }
-
-    private async Task<string?> NameAtAsync(byte cat, byte idx)
-    {
-        if (cat == BleManager.CatOtp)
-            return (await _ble.ReadOtpNameServiceAsync(idx).ConfigureAwait(false))?.Name;
-        return await _ble.ReadKeyNameAsync(cat, idx).ConfigureAwait(false);
+        var (ok, value) = await _keys.GetAsync(cat, name).ConfigureAwait(false);
+        return (ok ? "OK:" : "ERROR:") + value;
     }
 
     public async ValueTask DisposeAsync() => await StopAsync();

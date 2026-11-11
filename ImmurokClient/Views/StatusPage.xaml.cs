@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using ImmurokClient.Helpers;
 using ImmurokClient.Localization;
 using ImmurokClient.Services;
 using ImmurokCommon.Protocol;
@@ -72,17 +73,37 @@ public partial class StatusPage : Page
         catch { return false; }
     }
 
+    /// <summary>
+    /// 清单的一行：状态图标 + 名称，提示另起一行、自动换行（以前拼在名称后面不换行，
+    /// 长提示在窄窗口里直接被裁掉）。行与行之间画分隔线。
+    /// </summary>
     private void AddItem(string label, bool ok, string? hint = null)
     {
-        var sp = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 4) };
-        sp.Children.Add(new TextBlock
+        if (ChecklistPanel.Children.Count > 0)
+            ChecklistPanel.Children.Add(new Border { Style = Ui.Style("Divider"), Margin = new Thickness(0) });
+
+        var g = new Grid { Margin = new Thickness(0, 10, 0, 10) };
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        g.Children.Add(new Viewbox
         {
-            Text = ok ? "✓  " : "✕  ",
-            Foreground = ok ? System.Windows.Media.Brushes.LightGreen : System.Windows.Media.Brushes.IndianRed,
-            FontWeight = FontWeights.Bold,
+            Child = Ui.StatusIcon(ok), Width = 20, Height = 20,
+            Margin = new Thickness(2, 0, 14, 0), VerticalAlignment = VerticalAlignment.Top,
         });
-        sp.Children.Add(new TextBlock { Text = label + (hint is null ? "" : T("common.hintwrap", hint)) });
-        ChecklistPanel.Children.Add(sp);
+
+        var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        text.Children.Add(Ui.Text(label));
+        if (hint is not null)
+        {
+            var h = Ui.Text(hint, ok ? "Caption" : "CaptionCaution");
+            h.Margin = new Thickness(0, 2, 0, 0);
+            text.Children.Add(h);
+        }
+        Grid.SetColumn(text, 1);
+        g.Children.Add(text);
+
+        ChecklistPanel.Children.Add(g);
     }
 
     private async void OnRefreshClick(object sender, RoutedEventArgs e) => await RefreshAsync();

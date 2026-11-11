@@ -4,90 +4,81 @@
       xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
       xmlns:loc="clr-namespace:ImmurokClient.Localization"
       xmlns:h="clr-namespace:ImmurokClient.Helpers"
+      xmlns:c="clr-namespace:ImmurokClient.Controls"
       xmlns:v="clr-namespace:ImmurokClient.Views"
       Title="{loc:Tr nav.keys}">
+    <!--
+        页面结构：页头（标题 + 命令）→ 结果条 → 三类密钥各一张卡片。
+          · 卡片只放「列表」，添加 / 生成收进标题行右侧的按钮，点开是对话框（FormDialog）——
+            以前三张卡片各挂一个常驻的添加表单，密钥还是明文输入，页面一半是输入框；
+          · 平时每行只有主操作（取码 / 公钥 / 复制）；点页头「管理」才出现复选框、重命名、删除，
+            同时主操作和页头的「刷新」收起（管理模式只做管理）；批量删除按钮在管理模式下勾选了条目才出现；
+          · 操作结果用 InfoBar（成功 / 失败有颜色区分，可关闭），不再是一行灰字。
+    -->
     <ScrollViewer VerticalScrollBarVisibility="Auto" h:WheelScroll.Enabled="True">
-        <StackPanel Margin="28,24,28,24" MaxWidth="680" HorizontalAlignment="Left">
-            <TextBlock Text="{loc:Tr keys.title}" FontSize="28" FontWeight="Bold" Margin="0,0,0,2" />
-            <TextBlock Text="{loc:Tr keys.subtitle}" Opacity="0.6" Margin="0,0,0,20" />
-
-            <v:PairingBanner x:Name="PairBanner" />
-
-            <!-- TOTP -->
-            <ui:Card Margin="0,0,0,14" Padding="18">
-                <StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                        <ui:SymbolIcon Foreground="{DynamicResource TextFillColorPrimaryBrush}" Symbol="Timer24" FontSize="18" Margin="0,0,8,0" />
-                        <TextBlock Text="{loc:Tr keys.totp}" FontWeight="SemiBold" VerticalAlignment="Center" />
+        <c:PageContainer>
+            <StackPanel>
+                <!-- 页头：标题 + 说明，命令靠右上；窄到放不下时命令折到说明下面 -->
+                <c:AdaptiveRow Margin="0,0,0,20" MinMainWidth="300" TrailingAlignment="Top">
+                    <StackPanel>
+                        <TextBlock Text="{loc:Tr keys.title}" Style="{StaticResource PageTitle}" />
+                        <TextBlock Text="{loc:Tr keys.subtitle}" Style="{StaticResource PageSubtitle}" />
                     </StackPanel>
-                    <TextBlock Text="{loc:Tr keys.totp.desc}" Opacity="0.6" FontSize="12" Margin="0,0,0,10" />
-                    <ItemsControl x:Name="OtpPanel" />
-                    <TextBlock x:Name="OtpEmpty" Text="{loc:Tr common.none}" Opacity="0.5" FontSize="12" Visibility="Collapsed" />
-                    <Border BorderThickness="0,1,0,0" BorderBrush="#22808080" Margin="0,10,0,0" Padding="0,10,0,0">
-                        <StackPanel>
-                            <TextBlock Text="{loc:Tr keys.totp.add}" Opacity="0.7" FontSize="12" Margin="0,0,0,6" />
-                            <StackPanel Orientation="Horizontal">
-                                <ui:TextBox x:Name="OtpName" PlaceholderText="{loc:Tr ph.name}" Width="130" Margin="0,0,6,0" />
-                                <ui:TextBox x:Name="OtpService" PlaceholderText="{loc:Tr ph.service}" Width="130" Margin="0,0,6,0" />
-                                <ui:TextBox x:Name="OtpSecret" PlaceholderText="{loc:Tr ph.secret}" Width="160" Margin="0,0,6,0" />
-                                <ui:Button Content="{loc:Tr common.add}" Icon="{ui:SymbolIcon Add24}" Click="OnAddOtpClick" />
-                            </StackPanel>
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
-            </ui:Card>
-
-            <!-- SSH -->
-            <ui:Card Margin="0,0,0,14" Padding="18">
-                <StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                        <ui:SymbolIcon Foreground="{DynamicResource TextFillColorPrimaryBrush}" Symbol="Key24" FontSize="18" Margin="0,0,8,0" />
-                        <TextBlock Text="{loc:Tr keys.ssh}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                        <ui:Button x:Name="DelSelectedBtn" Icon="{ui:SymbolIcon Delete24}"
+                                   Appearance="Danger" Click="OnDeleteSelectedClick" Margin="0,0,8,0"
+                                   Visibility="Collapsed" />
+                        <ui:Button x:Name="ManageBtn" Content="{loc:Tr keys.manage}" Icon="{ui:SymbolIcon Settings24}"
+                                   Appearance="Secondary" Click="OnManageClick" Margin="0,0,8,0" />
+                        <ui:Button x:Name="RefreshBtn" Content="{loc:Tr common.refresh}" Icon="{ui:SymbolIcon ArrowClockwise24}"
+                                   Appearance="Secondary" Click="OnRefreshClick" />
                     </StackPanel>
-                    <TextBlock Text="{loc:Tr keys.ssh.desc}" Opacity="0.6" FontSize="12" Margin="0,0,0,10" />
-                    <ItemsControl x:Name="SshPanel" />
-                    <TextBlock x:Name="SshEmpty" Text="{loc:Tr common.none}" Opacity="0.5" FontSize="12" Visibility="Collapsed" />
-                    <Border BorderThickness="0,1,0,0" BorderBrush="#22808080" Margin="0,10,0,0" Padding="0,10,0,0">
-                        <StackPanel>
-                            <TextBlock Text="{loc:Tr keys.ssh.gen}" Opacity="0.7" FontSize="12" Margin="0,0,0,6" />
-                            <StackPanel Orientation="Horizontal">
-                                <ui:TextBox x:Name="SshName" PlaceholderText="{loc:Tr ph.name}" Width="200" Margin="0,0,6,0" />
-                                <ui:Button Content="{loc:Tr common.generate}" Icon="{ui:SymbolIcon Add24}" Click="OnGenSshClick" />
-                            </StackPanel>
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
-            </ui:Card>
+                </c:AdaptiveRow>
 
-            <!-- API -->
-            <ui:Card Margin="0,0,0,14" Padding="18">
-                <StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                        <ui:SymbolIcon Foreground="{DynamicResource TextFillColorPrimaryBrush}" Symbol="Password24" FontSize="18" Margin="0,0,8,0" />
-                        <TextBlock Text="{loc:Tr keys.api}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <v:PairingBanner x:Name="PairBanner" />
+
+                <!-- 操作结果：紧跟页头，三张卡片再长也看得到 -->
+                <ui:InfoBar x:Name="ResultBar" IsOpen="False" IsClosable="True" Margin="0,0,0,8" />
+
+                <!-- TOTP -->
+                <c:SettingCard Icon="Timer24" Title="{loc:Tr keys.totp}" Description="{loc:Tr keys.totp.desc}">
+                    <c:SettingCard.Action>
+                        <ui:Button Content="{loc:Tr common.add}" Icon="{ui:SymbolIcon Add24}"
+                                   AutomationProperties.Name="{loc:Tr keys.totp.add}" Click="OnAddOtpClick" />
+                    </c:SettingCard.Action>
+                    <StackPanel Margin="0,12,0,0">
+                        <ItemsControl x:Name="OtpPanel" Focusable="False" />
+                        <TextBlock x:Name="OtpEmpty" Text="{loc:Tr common.none}" Style="{StaticResource CaptionTertiary}"
+                                   Margin="0,0,0,0" Visibility="Collapsed" />
                     </StackPanel>
-                    <TextBlock Text="{loc:Tr keys.api.desc}" Opacity="0.6" FontSize="12" Margin="0,0,0,10" />
-                    <ItemsControl x:Name="ApiPanel" />
-                    <TextBlock x:Name="ApiEmpty" Text="{loc:Tr common.none}" Opacity="0.5" FontSize="12" Visibility="Collapsed" />
-                    <Border BorderThickness="0,1,0,0" BorderBrush="#22808080" Margin="0,10,0,0" Padding="0,10,0,0">
-                        <StackPanel>
-                            <TextBlock Text="{loc:Tr keys.api.add}" Opacity="0.7" FontSize="12" Margin="0,0,0,6" />
-                            <StackPanel Orientation="Horizontal">
-                                <ui:TextBox x:Name="ApiName" PlaceholderText="{loc:Tr ph.name}" Width="130" Margin="0,0,6,0" />
-                                <ui:TextBox x:Name="ApiValue" PlaceholderText="{loc:Tr ph.value}" Width="260" Margin="0,0,6,0" />
-                                <ui:Button Content="{loc:Tr common.add}" Icon="{ui:SymbolIcon Add24}" Click="OnAddApiClick" />
-                            </StackPanel>
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
-            </ui:Card>
+                </c:SettingCard>
 
-            <StackPanel Orientation="Horizontal">
-                <ui:Button Content="{loc:Tr common.refresh}" Icon="{ui:SymbolIcon ArrowClockwise24}" Appearance="Secondary" Click="OnRefreshClick" />
-                <ui:Button x:Name="DelSelectedBtn" Content="{loc:Tr keys.delete_selected}" Icon="{ui:SymbolIcon Delete24}"
-                           Appearance="Secondary" Click="OnDeleteSelectedClick" Margin="8,0,0,0" IsEnabled="False" />
+                <!-- SSH -->
+                <c:SettingCard Icon="Key24" Title="{loc:Tr keys.ssh}" Description="{loc:Tr keys.ssh.desc}">
+                    <c:SettingCard.Action>
+                        <ui:Button Content="{loc:Tr common.generate}" Icon="{ui:SymbolIcon Add24}"
+                                   AutomationProperties.Name="{loc:Tr keys.ssh.gen}" Click="OnGenSshClick" />
+                    </c:SettingCard.Action>
+                    <StackPanel Margin="0,12,0,0">
+                        <ItemsControl x:Name="SshPanel" Focusable="False" />
+                        <TextBlock x:Name="SshEmpty" Text="{loc:Tr common.none}" Style="{StaticResource CaptionTertiary}"
+                                   Margin="0,0,0,0" Visibility="Collapsed" />
+                    </StackPanel>
+                </c:SettingCard>
+
+                <!-- API -->
+                <c:SettingCard Icon="Password24" Title="{loc:Tr keys.api}" Description="{loc:Tr keys.api.desc}">
+                    <c:SettingCard.Action>
+                        <ui:Button Content="{loc:Tr common.add}" Icon="{ui:SymbolIcon Add24}"
+                                   AutomationProperties.Name="{loc:Tr keys.api.add}" Click="OnAddApiClick" />
+                    </c:SettingCard.Action>
+                    <StackPanel Margin="0,12,0,0">
+                        <ItemsControl x:Name="ApiPanel" Focusable="False" />
+                        <TextBlock x:Name="ApiEmpty" Text="{loc:Tr common.none}" Style="{StaticResource CaptionTertiary}"
+                                   Margin="0,0,0,0" Visibility="Collapsed" />
+                    </StackPanel>
+                </c:SettingCard>
             </StackPanel>
-            <TextBlock x:Name="StatusText" Margin="0,12,0,0" Opacity="0.8" TextWrapping="Wrap" />
-        </StackPanel>
+        </c:PageContainer>
     </ScrollViewer>
 </Page>

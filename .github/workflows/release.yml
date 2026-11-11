@@ -31,7 +31,76 @@ env:
   SIGNING: ${{ vars.ARTIFACT_SIGNING_PROFILE != '' }}
 
 jobs:
+  # WSL2 support ships Linux binaries inside the Windows installer: our bridge
+  # (wsl/bridge) plus `imk` and `pam_immurok.so` from the Linux app, which run
+  # unmodified inside WSL. They are built here from source, once per
+  # architecture, so a Windows release depends on no Linux release — only on
+  # the app-linux-rs sources being on GitHub.
+  # debian:12 is the glibc baseline (2.36): pam_immurok.so is the one file in
+  # the payload that is not static.
+  wsl-payload:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    container: debian:12
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Build dependencies
+        run: |
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
+            build-essential musl-tools libpam0g-dev curl ca-certificates git
+      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6
+        with:
+          repository: immurok/app-linux-rs
+          path: linux-src
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.arch }}-unknown-linux-musl
+      - name: Build payload
+        run: |
+          set -euo pipefail
+          echo "app-linux-rs at $(git -C linux-src rev-parse HEAD)"
+          cargo test --locked --manifest-path wsl/bridge/Cargo.toml
+          sh wsl/build-payload.sh --linux-src linux-src --out "dist/immurok-wsl-payload-${{ matrix.arch }}.tar.gz"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: wsl-payload-${{ matrix.arch }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  # One payload carrying both architectures goes into both installers; the
+  # install script inside it picks by `uname -m`. merge-payload.sh refuses
+  # inputs built from different sources and a result missing either one.
+  wsl-payload-merge:
+    needs: wsl-payload
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: wsl-payload-*
+          path: parts
+          merge-multiple: true
+      - name: Merge
+        run: sh wsl/merge-payload.sh --out dist/immurok-wsl-payload.tar.gz parts/*.tar.gz
+      - uses: actions/upload-artifact@v7
+        with:
+          name: wsl-payload
+          path: dist/immurok-wsl-payload.tar.gz
+          if-no-files-found: error
+
   build:
+    needs: wsl-payload-merge
     # The Azure federated credential is bound to this environment
     # (subject repo:immurok/app-win:environment:release), so only this job can
     # sign. Add required reviewers to the environment to gate every release.
@@ -79,6 +148,13 @@ jobs:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # build-installer.ps1 picks the payload up from packaging\wsl\ and fails
+      # if it is absent or lacks an architecture it is building for.
+      - uses: actions/download-artifact@v7
+        with:
+          name: wsl-payload
+          path: packaging/wsl
 
       # build-installer.ps1 fetches the signing dlib, signs our own exe/dll, then
       # has Inno Setup sign the installer and the uninstaller, and fails the build

@@ -32,6 +32,16 @@ public sealed class BleManager : IAsyncDisposable
     private GattCharacteristic? _cmdChar;
     private GattCharacteristic? _rspChar;
 
+    // 向 Windows 申请的连接参数（Win11 22H2+ API）。对象存活期间申请有效，断开时释放。
+    // **只做兜底，不无条件申请**：系统预设的 slave latency 全是 0（Balanced = 30–60 ms / 0 / 4 s），
+    // 申请存活期间 Windows 一直按它压着，固件自己谈 latency 20 的请求全被挡掉，设备每 60 ms 醒一次。
+    // 多数机器上 Windows 建链后 1 s 内就按设备 PPCP 给 60 ms / 20 / 6 s（2026-11-11 实测），不需要申请；
+    // 只有个别环境（Parallels + USB dongle 见过 7.5 ms / 0 / 2 s）supervision timeout 太短，
+    // 固件做 ECDSA（~2 s 阻塞）要求 timeout ≥ 3 s 否则回 0xE1 拒签，这时才申请 Balanced。
+    private BluetoothLEPreferredConnectionParametersRequest? _connParamsRequest;
+    private const int MinLinkTimeoutMs = 3000;
+    private static readonly TimeSpan ConnParamsSettleDelay = TimeSpan.FromSeconds(3);
+
     // OTA：独立服务/特征，与主命令通道分开。
     // 注意：OTA 特征是 Read/Write 型，无 Notify —— macOS 端采用「写入后轮询读取」
     // （固件异步操作未完成时返回空数据，主机每 0.2s 重读），此处照搬该模型。
@@ -80,6 +90,12 @@ public sealed class BleManager : IAsyncDisposable
     //   0x07 = 按错指纹（累计 3 次失败判负）；0x06 = 超时/终止；0x10 = 门已通过(继续等结果)；
     //   其余 = 结果字节（如 SLOT_CLEAR 的 [status]、OTP 的 [OK][6 位]）。
     private TaskCompletionSource<byte[]?>? _pendingFpGate;
+
+    /// <summary>指纹门 / 签名失败原因，供终端提示给出明确错误。</summary>
+    public enum SignFailure { None, LinkParams, FingerprintRejected, Timeout, Cancelled, Disconnected, Error }
+
+    // 最近一次指纹门以 null 结束的原因（门内各出口在 TrySetResult(null) 之前写入）。
+    private SignFailure _lastGateFailure;
 
     // 读秘密命令的主机侧指纹门预算（设计稿 §3.6 过渡方案），见 GateBudget 的注释。
     private readonly GateBudget _gateBudget = new();
@@ -463,6 +479,7 @@ public sealed class BleManager : IAsyncDisposable
             DeviceName = device.Name;
             _device.ConnectionStatusChanged += OnConnectionStatusChanged;
             _connected = true;
+            _ = EnsureLinkTimeoutAsync(device);
 
             // OTA 特征（可选，不影响主功能）。服务已在上面的单次枚举中取得；
             // 只缓存不订阅 —— OTA 特征无 Notify，响应走「写入后轮询读取」（对齐 macOS otaWriteAndRead）。
@@ -489,6 +506,44 @@ public sealed class BleManager : IAsyncDisposable
         {
             _connectGate.Release();
         }
+    }
+
+    /// <summary>
+    /// 建链后看主机侧的实际链路参数：supervision timeout 够用就什么都不申请（让设备 PPCP / 固件的
+    /// 参数请求生效，拿到 slave latency）；不够则等几秒让 Windows 把 PPCP 套上，仍不够才申请 Balanced 兜底。
+    /// </summary>
+    private async Task EnsureLinkTimeoutAsync(BluetoothLEDevice device)
+    {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22621))
+        {
+            _log.LogInformation("系统低于 Win11 22H2，无法读取/申请 BLE 连接参数（SSH 签名可能被设备以 0xE1 拒绝）");
+            return;
+        }
+        try
+        {
+            if (LinkTimeoutOk(device, "建链时")) return;
+            await Task.Delay(ConnParamsSettleDelay);
+            // 等待期间可能已断开或换了设备对象（HandleDisconnect 会 Dispose 它）。
+            if (!_connected || !ReferenceEquals(_device, device)) return;
+            if (LinkTimeoutOk(device, "稳定后")) return;
+
+            _connParamsRequest?.Dispose();
+            _connParamsRequest = device.RequestPreferredConnectionParameters(
+                BluetoothLEPreferredConnectionParameters.Balanced);
+            _log.LogInformation("supervision timeout 不足，申请 BLE 连接参数 Balanced 兜底: {Status}",
+                _connParamsRequest.Status);
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "检查/申请 BLE 连接参数失败"); }
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("windows10.0.22621.0")]
+    private bool LinkTimeoutOk(BluetoothLEDevice device, string when)
+    {
+        BluetoothLEConnectionParameters p = device.GetConnectionParameters();
+        int timeoutMs = p.LinkTimeout * 10;
+        _log.LogInformation("{When}链路参数: interval={Interval}×1.25ms latency={Latency} timeout={Timeout}ms",
+            when, p.ConnectionInterval, p.ConnectionLatency, timeoutMs);
+        return timeoutMs >= MinLinkTimeoutMs;
     }
 
     private static async Task<GattCharacteristic?> GetCharacteristicAsync(GattDeviceService service, Guid uuid)
@@ -520,6 +575,8 @@ public sealed class BleManager : IAsyncDisposable
         _otaChar = null;
         _otaService?.Dispose();
         _otaService = null;
+        try { _connParamsRequest?.Dispose(); } catch { /* ignore */ }
+        _connParamsRequest = null;
         if (_device is not null)
         {
             _device.ConnectionStatusChanged -= OnConnectionStatusChanged;
@@ -530,6 +587,7 @@ public sealed class BleManager : IAsyncDisposable
         // 完成所有在途等待，避免悬挂。
         lock (_pendingLock) { _pendingResponse?.TrySetResult(null); _pendingResponse = null; }
         _pendingPairPubKey?.TrySetCanceled();
+        if (_pendingFpGate is not null) _lastGateFailure = SignFailure.Disconnected;
         _pendingFpGate?.TrySetResult(null);
         _pendingFpGate = null;
         _fpGateFails = 0;
@@ -656,15 +714,26 @@ public sealed class BleManager : IAsyncDisposable
         }
 
         // 统一指纹门结果分发（SLOT_CLEAR 跨槽 / KEY_DELETE / KEY_COMMIT / OTP 取码 等）。
-        if (_pendingFpGate is not null
-            && data[0] != NotifyOpcode.FpMatchEvent && data[0] != NotifyOpcode.LinkParams)
+        if (_pendingFpGate is not null && data[0] != NotifyOpcode.FpMatchEvent)
         {
+            // 0xE1：设备拒绝做长 ECC 运算（KEY_SIGN 等）——链路 supervision timeout 不足 3 s，
+            // 设备申请新参数 5 s 内没被批准（hidkbd.c LONG_ECC REJECTED）。门到此终止；
+            // 以前这帧被排除在门之外、落到「无在途命令」丢掉，签名一直挂到 ssh 自己超时。
+            if (data.Length == 1 && data[0] == NotifyOpcode.LinkParams)
+            {
+                _log.LogWarning("设备拒绝执行：BLE 链路参数不足（0xE1），稍后重试");
+                _lastGateFailure = SignFailure.LinkParams;
+                var g = _pendingFpGate; _pendingFpGate = null;
+                g.TrySetResult(null);
+                return;
+            }
             if (data.Length == 1 && data[0] == (byte)ImmurokStatus.ErrFpNotMatch) // 0x07 按错
             {
                 _fpGateFails++;
                 FpGateAttemptFailed?.Invoke(3 - _fpGateFails);
                 if (_fpGateFails >= 3)
                 {
+                    _lastGateFailure = SignFailure.FingerprintRejected;
                     var g = _pendingFpGate; _pendingFpGate = null;
                     g.TrySetResult(null);
                 }
@@ -672,6 +741,8 @@ public sealed class BleManager : IAsyncDisposable
             }
             if (data.Length == 1 && data[0] == (byte)ImmurokStatus.ErrTimeout) // 0x06 终止
             {
+                // 按错 3 次后设备也发 0x06；那种情况 0x07 计数已先记成 FingerprintRejected。
+                _lastGateFailure = _fpGateFails >= 3 ? SignFailure.FingerprintRejected : SignFailure.Timeout;
                 var g = _pendingFpGate; _pendingFpGate = null;
                 g.TrySetResult(null);
                 return;
@@ -683,11 +754,18 @@ public sealed class BleManager : IAsyncDisposable
                 return;
             }
 
-            // 其余 = 结果。走到这里说明设备上刚过了一次真实指纹门（按错是 0x07、终止是 0x06）。
-            _gateBudget.Touched();
-            var gr = _pendingFpGate; _pendingFpGate = null;
-            gr.TrySetResult(data);
-            return;
+            // 门期间发出的命令（FP_MATCH_ACK、GATE_CANCEL、页面查询等）的回包归它自己：
+            // 以前门优先，0x22 的 [00] 被当成签名结果，接着读到结果缓冲区里残留的公钥当签名回给 ssh。
+            bool cmdInFlight;
+            lock (_pendingLock) cmdInFlight = _pendingResponse is not null;
+            if (!cmdInFlight)
+            {
+                // 其余 = 结果。走到这里说明设备上刚过了一次真实指纹门（按错是 0x07、终止是 0x06）。
+                _gateBudget.Touched();
+                var gr = _pendingFpGate; _pendingFpGate = null;
+                gr.TrySetResult(data);
+                return;
+            }
         }
 
         // 配对：设备按键后送来的 33B 公钥（部分固件路径把公钥放在 [0x30][33B]）。
@@ -933,19 +1011,26 @@ public sealed class BleManager : IAsyncDisposable
         catch { /* 尽力而为 */ }
         var g = _pendingFpGate;
         _pendingFpGate = null;
+        _lastGateFailure = SignFailure.Cancelled;
         g?.TrySetResult(null);
     }
 
-    /// <summary>命令回 WAIT_FP 后，等待指纹门结果。返回结果字节；失败/超时返回 null。</summary>
-    private async Task<byte[]?> RunFpGateAsync(int timeoutMs)
+    /// <summary>
+    /// 命令回 WAIT_FP 后，等待指纹门结果。返回结果字节；失败/超时返回 null，原因记在 _lastGateFailure。
+    /// approved：命令回复本身就是 0x10（门已过、结果随后到）——cooldown 内或刚过完 AUTH_REQUEST
+    /// 预算门时如此，这帧不经门内分发，得在这里补发 FpGateApproved，否则终端签名期间还停在「请按指纹」。
+    /// </summary>
+    private async Task<byte[]?> RunFpGateAsync(int timeoutMs, bool approved = false)
     {
         _fpGateFails = 0;
+        _lastGateFailure = SignFailure.None;
         var g = new TaskCompletionSource<byte[]?>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pendingFpGate = g;
         FpGateRequired?.Invoke();
+        if (approved) FpGateApproved?.Invoke();
         using var cts = new CancellationTokenSource(timeoutMs);
         try { return await g.Task.WaitAsync(cts.Token).ConfigureAwait(false); }
-        catch (OperationCanceledException) { _pendingFpGate = null; return null; }
+        catch (OperationCanceledException) { _pendingFpGate = null; _lastGateFailure = SignFailure.Timeout; return null; }
     }
 
     /// <summary>
@@ -1249,7 +1334,16 @@ public sealed class BleManager : IAsyncDisposable
         {
             byte[]? r = await SendCommandAsync(ImmurokCommand.KeyRead, new[] { cat, idx, (byte)off });
             if (r is { Length: >= 1 } && r[0] == (byte)ImmurokStatus.WaitFingerprint)
-                r = await RunFpGateAsync(30000);
+            {
+                // 固件对 KEY_READ 回 WAIT_FP 时**不挂待执行命令**（hidkbd.c KEY_READ：直接 break），
+                // 触摸后不会有结果帧——那次触摸只被当成普通匹配（0x21）。以前这里用 RunFpGateAsync 干等
+                // 结果，永远等不到（客户端认证窗不关，30s 超时）；只有 GateBudget 恰好耗尽、上面先走了
+                // AUTH_REQUEST 时才读得出来。正确做法：发 AUTH_REQUEST 过一次真实触摸（它会置 AUTH
+                // cooldown，KEY_READ 的秘密区认 KEYSTORE 或 AUTH 任一 cooldown），再重读同一偏移。
+                if (!await AuthenticateAsync().ConfigureAwait(false)) return null;
+                _gateBudget.Touched();
+                r = await SendCommandAsync(ImmurokCommand.KeyRead, new[] { cat, idx, (byte)off });
+            }
             if (r is not { Length: > 3 } || r[0] != (byte)ImmurokStatus.Ok) return null;
             int devTotal = r[1], roff = r[2], chunk = r.Length - 3;
             if (acc is null) { total = devTotal > 0 ? devTotal : 160; acc = new byte[total]; }
@@ -1475,29 +1569,50 @@ public sealed class BleManager : IAsyncDisposable
         return (newIdx, ToBigEndian64(le));
     }
 
-    /// <summary>ECDSA P-256 签名（KEY_SIGN，指纹门）。输入 32B 哈希，返回 64B 大端 r||s。</summary>
-    public async Task<byte[]?> SshSignAsync(byte idx, byte[] hash32)
+    /// <summary>
+    /// ECDSA P-256 签名（KEY_SIGN，指纹门）。输入 32B 哈希，成功返回 64B 大端 r||s；
+    /// 失败时 Sig 为 null，Failure 给出原因（终端提示用）。
+    /// </summary>
+    public async Task<(byte[]? Sig, SignFailure Failure)> SshSignAsync(byte idx, byte[] hash32)
     {
-        if (hash32.Length != 32) return null;
-        if (!await EnsureSecretBudgetAsync("KEY_SIGN").ConfigureAwait(false)) return null;
+        if (hash32.Length != 32) return (null, SignFailure.Error);
+        if (!_connected) return (null, SignFailure.Disconnected);
+        _lastGateFailure = SignFailure.None; // 预算门没进门就失败时，别读到上一次的原因
+        if (!await EnsureSecretBudgetAsync("KEY_SIGN").ConfigureAwait(false))
+            return (null, GateFailureOr(SignFailure.Error));
         byte[] payload = new byte[3 + 32];
         payload[0] = CatSsh; payload[1] = idx; payload[2] = 0;
         Array.Copy(hash32, 0, payload, 3, 32);
 
         byte[]? r = await SendCommandAsync(ImmurokCommand.KeySign, payload, timeoutMs: 15000);
-        if (r is not { Length: >= 1 }) return null;
+        if (r is not { Length: >= 1 })
+            return (null, _connected ? SignFailure.Timeout : SignFailure.Disconnected);
         if (r[0] == (byte)ImmurokStatus.Ok) { /* 直接完成 */ }
         else if (r[0] == (byte)ImmurokStatus.WaitFingerprint || r[0] == 0x10)
         {
-            byte[]? g = await RunFpGateAsync(45000);
-            if (g is null) return null;
+            // 签名完成帧是 [OK][0x40]；其它结果说明没签，别去读结果缓冲区（里面是上一次的残留）。
+            byte[]? g = await RunFpGateAsync(45000, approved: r[0] == 0x10);
+            if (g is null) return (null, GateFailureOr(SignFailure.Error));
+            if (g[0] != (byte)ImmurokStatus.Ok)
+            {
+                _log.LogWarning("KEY_SIGN 门结果异常: [{Hex}]", Convert.ToHexString(g));
+                return (null, SignFailure.Error);
+            }
         }
-        else return null;
+        else if (r[0] == NotifyOpcode.LinkParams)
+        {
+            _log.LogWarning("设备拒绝执行 KEY_SIGN：BLE 链路参数不足（0xE1），稍后重试");
+            return (null, SignFailure.LinkParams);
+        }
+        else return (null, SignFailure.Error);
 
         byte[]? le = await ReadResultBufferAsync();
-        if (le is not { Length: 64 }) return null;
-        return ToBigEndian64(le);
+        if (le is not { Length: 64 }) return (null, _connected ? SignFailure.Error : SignFailure.Disconnected);
+        return (ToBigEndian64(le), SignFailure.None);
     }
+
+    private SignFailure GateFailureOr(SignFailure fallback)
+        => _lastGateFailure == SignFailure.None ? fallback : _lastGateFailure;
 
     /// <summary>列出全部 SSH 密钥（含 64B 大端公钥），供 SSH agent 构建身份列表。</summary>
     public async Task<List<(byte Idx, string Name, byte[] PubBe)>> SshListWithPubAsync()
@@ -1536,6 +1651,7 @@ public sealed class BleManager : IAsyncDisposable
         if (_rspChar is not null) { try { _rspChar.ValueChanged -= OnRspValueChanged; } catch { } }
         _service?.Dispose();
         _otaService?.Dispose();
+        _connParamsRequest?.Dispose();
         _device?.Dispose();
         _cmdGate.Dispose();
         _connectGate.Dispose();

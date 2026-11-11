@@ -121,7 +121,7 @@ public sealed class SshAgentServer : IAsyncDisposable
                 Contended = false;
                 _bindState = 1;
                 await pipe.WaitForConnectionAsync(ct).ConfigureAwait(false);
-                _ = HandleClientAsync(pipe, ct);
+                _ = ServePipeAsync(pipe, ct);
             }
             catch (OperationCanceledException) { pipe?.Dispose(); break; }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -169,11 +169,30 @@ public sealed class SshAgentServer : IAsyncDisposable
             0, 0, PipeAcl.Build(rw));
     }
 
-    private async Task HandleClientAsync(NamedPipeServerStream pipe, CancellationToken ct)
+    private Task ServePipeAsync(NamedPipeServerStream pipe, CancellationToken ct)
+    {
+        byte[] one = new byte[1];
+        // 对端关闭时读返回 0 或抛异常；有数据也按断开算（签名期间 ssh 不会再发东西）。
+        return ServeStreamAsync(pipe, GetClientPid(pipe),
+            async c => { await pipe.ReadAsync(one.AsMemory(0, 1), c).ConfigureAwait(false); }, ct);
+    }
+
+    /// <summary>
+    /// 在任意双向流上跑 ssh-agent 协议，直到对端关闭；结束时释放流。命名管道与 WSL 的
+    /// Hyper-V socket（<see cref="ImmurokService.Wsl.WslBridgeServer"/>）共用这一份实现。
+    /// </summary>
+    /// <param name="clientPid">对端的 Windows 进程 ID，用于把指纹提示附到它的控制台；0 = 没有（WSL），不显示终端提示。</param>
+    /// <param name="waitPeerClosed">签名等指纹期间用来发现对端断开：对端关闭时完成，可被取消。</param>
+    /// <param name="hint">
+    /// 指纹门进度的去向（WSL：发 <see cref="ImmurokService.Wsl.WslHint"/> 提示帧给桥，由桥画到 WSL 终端）；
+    /// null = 不发。参数是 (code, arg)。在门事件的回调线程上同步调用，实现里不能抛。
+    /// </param>
+    public async Task ServeStreamAsync(Stream pipe, uint clientPid, Func<CancellationToken, Task> waitPeerClosed,
+        CancellationToken ct, Action<byte, byte>? hint = null)
     {
         try
         {
-            while (pipe.IsConnected && !ct.IsCancellationRequested)
+            while (!ct.IsCancellationRequested)
             {
                 byte[]? msg = await ReadMessageAsync(pipe, ct).ConfigureAwait(false);
                 if (msg is null || msg.Length < 1) break;
@@ -183,10 +202,10 @@ public sealed class SshAgentServer : IAsyncDisposable
                 switch (type)
                 {
                     case SSH_AGENTC_REQUEST_IDENTITIES:
-                        await SendAsync(pipe, BuildIdentitiesAnswer(), ct);
+                        await SendAsync(pipe, await BuildIdentitiesAnswerAsync(), ct);
                         break;
                     case SSH_AGENTC_SIGN_REQUEST:
-                        await HandleSignAsync(pipe, payload, GetClientPid(pipe), ct);
+                        await HandleSignAsync(pipe, payload, clientPid, waitPeerClosed, hint, ct);
                         break;
                     default:
                         await SendAsync(pipe, new byte[] { SSH_AGENT_FAILURE }, ct);
@@ -201,8 +220,10 @@ public sealed class SshAgentServer : IAsyncDisposable
         finally { pipe.Dispose(); }
     }
 
-    private byte[] BuildIdentitiesAnswer()
+    private async Task<byte[]> BuildIdentitiesAnswerAsync()
     {
+        // 管道 agent 没开（只开了 WSL）时没人预热缓存：空了就现刷一次。
+        if (_identities.Count == 0) await RefreshIdentitiesAsync().ConfigureAwait(false);
         var ids = _identities;
         var body = new MemoryStream();
         body.WriteByte(SSH_AGENT_IDENTITIES_ANSWER);
@@ -215,7 +236,8 @@ public sealed class SshAgentServer : IAsyncDisposable
         return body.ToArray();
     }
 
-    private async Task HandleSignAsync(NamedPipeServerStream pipe, byte[] payload, uint clientPid, CancellationToken ct)
+    private async Task HandleSignAsync(Stream pipe, byte[] payload, uint clientPid,
+        Func<CancellationToken, Task> waitPeerClosed, Action<byte, byte>? hint, CancellationToken ct)
     {
         int off = 0;
         byte[]? keyBlob = ReadString(payload, ref off);
@@ -233,21 +255,27 @@ public sealed class SshAgentServer : IAsyncDisposable
 
         // 终端指纹提示 + 三次按错自动退出（退出由指纹门内建，这里只负责显示进度）。
         ConsolePrompt? prompt = null;
-        void OnGate() => prompt ??= ConsolePrompt.TryStart(clientPid, _log);
-        void OnApproved() => prompt?.Signing();
-        void OnFail(int rem) => prompt?.Fail(rem);
+        // 同样的进度有两个去向：Windows 上的 ssh.exe 走 ConsolePrompt 附它的控制台；WSL 里的 ssh 走 hint 交给桥。
+        void OnGate()
+        {
+            if (clientPid != 0) prompt ??= ConsolePrompt.TryStart(clientPid, _log);
+            hint?.Invoke(Wsl.WslHint.Waiting, 0);
+        }
+        void OnApproved() { prompt?.Signing(); hint?.Invoke(Wsl.WslHint.Signing, 0); }
+        void OnFail(int rem) { prompt?.Fail(rem); hint?.Invoke(Wsl.WslHint.Mismatch, (byte)Math.Clamp(rem, 0, 255)); }
         _ble.FpGateRequired += OnGate;
         _ble.FpGateApproved += OnApproved;
         _ble.FpGateAttemptFailed += OnFail;
 
         // 监听 ssh 客户端断开（Ctrl+C）：一断就取消设备指纹门，别让设备空等闪灯。
         using var watchCts = new CancellationTokenSource();
-        Task watch = WatchClientDisconnectAsync(pipe, watchCts.Token, () => _ = _ble.CancelGateAsync());
+        Task watch = WatchClientDisconnectAsync(waitPeerClosed, watchCts.Token, () => _ = _ble.CancelGateAsync());
 
         byte[]? sig;
+        BleManager.SignFailure failure;
         try
         {
-            sig = await _ble.SshSignAsync(idx.Value, hash);
+            (sig, failure) = await _ble.SshSignAsync(idx.Value, hash);
         }
         finally
         {
@@ -259,9 +287,26 @@ public sealed class SshAgentServer : IAsyncDisposable
 
         if (sig is not { Length: 64 })
         {
-            // 让最后一次"未匹配 / 超时"提示短暂停留，再擦除本行（等助手退出，确保擦除先于 ssh 输出）。
-            if (prompt is not null) await Task.Delay(500, CancellationToken.None);
+            _log.LogInformation("SSH 签名失败: {Failure}", failure);
+            // Ctrl+C（客户端已断开）：shell 已在本行打印新提示符，什么都不写，只让助手擦除退出。
+            // 其余失败在终端留一行明确的错误（没进过指纹门的失败，例如设备未连接 / 直接 0xE1，现起助手），
+            // 等助手退出后再回包，保证错误行先于 ssh 自己的报错。
+            if (failure != BleManager.SignFailure.Cancelled)
+            {
+                if (clientPid != 0) prompt ??= ConsolePrompt.TryStart(clientPid, _log);
+                prompt?.Error(failure);
+            }
             prompt?.Finish();
+            // 失败原因先于 FAILURE 应答送到桥，桥据此在 WSL 终端留一行。取消（对端已断）不发。
+            if (failure != BleManager.SignFailure.Cancelled)
+            {
+                hint?.Invoke(failure switch
+                {
+                    BleManager.SignFailure.FingerprintRejected => Wsl.WslHint.FailRejected,
+                    BleManager.SignFailure.Timeout => Wsl.WslHint.FailTimeout,
+                    _ => Wsl.WslHint.FailOther,
+                }, 0);
+            }
             await SendFailAsync(pipe, ct);
             return;
         }
@@ -307,20 +352,19 @@ public sealed class SshAgentServer : IAsyncDisposable
     [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool GetNamedPipeClientProcessId(IntPtr pipe, out uint clientProcessId);
 
-    private Task SendFailAsync(NamedPipeServerStream pipe, CancellationToken ct)
+    private Task SendFailAsync(Stream pipe, CancellationToken ct)
         => SendAsync(pipe, new byte[] { SSH_AGENT_FAILURE }, ct);
 
     /// <summary>
-    /// 签名期间监听客户端断开：ssh 被 Ctrl+C 杀掉后其管道端关闭，这里的读会返回 0 或抛异常，
+    /// 签名期间监听客户端断开：ssh 被 Ctrl+C 杀掉后其连接关闭，<paramref name="waitPeerClosed"/> 完成或抛异常，
     /// 触发回调（取消设备指纹门）。签名正常完成时由 watchCts 取消本任务。
     /// </summary>
-    private static async Task WatchClientDisconnectAsync(NamedPipeServerStream pipe, CancellationToken ct, Action onDisconnect)
+    private static async Task WatchClientDisconnectAsync(Func<CancellationToken, Task> waitPeerClosed, CancellationToken ct, Action onDisconnect)
     {
         try
         {
-            byte[] buf = new byte[1];
-            int n = await pipe.ReadAsync(buf.AsMemory(0, 1), ct).ConfigureAwait(false);
-            if (!ct.IsCancellationRequested) onDisconnect(); // n==0=对端关闭；有数据=异常情况，一并当断开
+            await waitPeerClosed(ct).ConfigureAwait(false);
+            if (!ct.IsCancellationRequested) onDisconnect();
         }
         catch (OperationCanceledException) { /* 签名正常完成 */ }
         catch { if (!ct.IsCancellationRequested) onDisconnect(); }
@@ -328,7 +372,7 @@ public sealed class SshAgentServer : IAsyncDisposable
 
     // ---- 线协议：[uint32 BE 长度][body] ----
 
-    private static async Task<byte[]?> ReadMessageAsync(NamedPipeServerStream pipe, CancellationToken ct)
+    private static async Task<byte[]?> ReadMessageAsync(Stream pipe, CancellationToken ct)
     {
         byte[] lenBuf = new byte[4];
         if (!await ReadExactAsync(pipe, lenBuf, 4, ct)) return null;
@@ -352,7 +396,7 @@ public sealed class SshAgentServer : IAsyncDisposable
     }
 
     /// <summary>发送一帧；客户端已断开则返回 false（不抛异常）。</summary>
-    private static async Task<bool> SendAsync(NamedPipeServerStream pipe, byte[] body, CancellationToken ct)
+    private static async Task<bool> SendAsync(Stream pipe, byte[] body, CancellationToken ct)
     {
         try
         {

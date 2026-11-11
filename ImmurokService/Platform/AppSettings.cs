@@ -19,6 +19,7 @@ public sealed class AppSettings : ISystemSshAgentPrevStore
         public bool? LockEnabled { get; set; }
         public bool? ImkAgentEnabled { get; set; }
         public bool? OtpEnabled { get; set; }
+        public bool? WslEnabled { get; set; }
         /// <summary>开启 SSH agent 时系统 ssh-agent 服务的原状态；null = 没接管过（或已还原）。</summary>
         public SystemSshAgentPrev? SystemSshAgentPrev { get; set; }
     }
@@ -81,6 +82,16 @@ public sealed class AppSettings : ISystemSshAgentPrevStore
     {
         get => _data.OtpEnabled ?? true;
         set { _data.OtpEnabled = value; Save(); }
+    }
+
+    /// <summary>
+    /// WSL2 支持（默认关）。打开后服务在 Hyper-V socket 上给 WSL 虚拟机监听，
+    /// WSL 内的 sudo / imk / ssh 经桥走设备指纹门（见 <see cref="ImmurokService.Wsl.WslBridgeServer"/>）。
+    /// </summary>
+    public bool WslEnabled
+    {
+        get => _data.WslEnabled ?? false;
+        set { _data.WslEnabled = value; Save(); }
     }
 
     private void Load()

@@ -205,14 +205,19 @@ public partial class EnrollDialog : FluentWindow
                     Height = 9,
                     Margin = new Thickness(4, 0, 4, 0),
                     Fill = Brushes.Transparent,
-                    Stroke = new SolidColorBrush(Color.FromArgb(0x66, 0x80, 0x80, 0x80)),
                     StrokeThickness = 1.5,
                 });
         }
-        var filled = new SolidColorBrush(Color.FromRgb(0x00, 0x78, 0xD4));
+        // 已完成的点用系统强调色填实（跟随用户在系统里选的颜色），未完成的留空圈。
         for (int i = 0; i < Dots.Children.Count; i++)
-            if (Dots.Children[i] is System.Windows.Shapes.Ellipse e)
-                e.Fill = i < done ? filled : Brushes.Transparent;
+        {
+            if (Dots.Children[i] is not System.Windows.Shapes.Ellipse e) continue;
+            bool on = i < done;
+            if (on) e.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, Helpers.Ui.Accent);
+            else e.Fill = Brushes.Transparent;
+            e.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty,
+                on ? Helpers.Ui.Accent : Helpers.Ui.ControlStroke);
+        }
     }
 
     // ---- 终态 ----

@@ -4,62 +4,75 @@
       xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
       xmlns:loc="clr-namespace:ImmurokClient.Localization"
       xmlns:h="clr-namespace:ImmurokClient.Helpers"
+      xmlns:c="clr-namespace:ImmurokClient.Controls"
       Title="{loc:Tr nav.about}">
     <ScrollViewer VerticalScrollBarVisibility="Auto" h:WheelScroll.Enabled="True">
-        <StackPanel Margin="28,24,28,24" MaxWidth="640" HorizontalAlignment="Left">
-            <TextBlock Text="{loc:Tr about.name}" FontSize="28" FontWeight="Bold" Margin="0,0,0,2" />
-            <!-- 版本号在代码里填入（取自程序集），文案只留 {0} 占位 -->
-            <TextBlock x:Name="AppVersionText" Opacity="0.6" Margin="0,0,0,20" />
-
-            <ui:Card Margin="0,0,0,14" Padding="18">
-                <StackPanel>
-                    <TextBlock Text="immurok for Windows" FontWeight="SemiBold" Margin="0,0,0,4" />
-                    <TextBlock TextWrapping="Wrap" Opacity="0.7"
-                               Text="{loc:Tr about.desc}" />
-                </StackPanel>
-            </ui:Card>
-
-            <ui:Card Padding="18">
-                <StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                        <ui:SymbolIcon Foreground="{DynamicResource TextFillColorPrimaryBrush}" Symbol="ArrowSync24" FontSize="18" Margin="0,0,8,0" />
-                        <TextBlock Text="{loc:Tr about.ota}" FontWeight="SemiBold" VerticalAlignment="Center" />
+        <c:PageContainer>
+            <StackPanel>
+                <!-- 页头：logo + 名称 + 版本（logo 随主题换黑 / 白版，见 AboutPage.UpdateLogo） -->
+                <Grid Margin="0,0,0,20">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Image x:Name="Logo" Grid.Column="0" Width="48" Height="48" Margin="0,0,16,0"
+                           VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Text="{loc:Tr about.name}" Style="{StaticResource PageTitle}" />
+                        <!-- 版本号在代码里填入（取自程序集），文案只留 {0} 占位 -->
+                        <TextBlock x:Name="AppVersionText" Style="{StaticResource PageSubtitle}" Margin="0,2,0,0" />
                     </StackPanel>
-                    <TextBlock Text="{loc:Tr about.ota.desc}"
-                               Opacity="0.6" FontSize="12" Margin="0,0,0,10" TextWrapping="Wrap" />
+                </Grid>
 
-                    <!-- 当前 / 最新版本 -->
-                    <Grid Margin="0,0,0,8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0">
-                            <TextBlock Text="{loc:Tr about.ota.current}" Opacity="0.6" FontSize="12" />
-                            <TextBlock x:Name="CurrentVerText" Text="—" FontWeight="SemiBold" Margin="0,2,0,0" />
-                        </StackPanel>
-                        <StackPanel Grid.Column="1" Margin="24,0,0,0">
-                            <TextBlock Text="{loc:Tr about.ota.latest}" Opacity="0.6" FontSize="12" />
-                            <TextBlock x:Name="LatestVerText" Text="—" FontWeight="SemiBold" Margin="0,2,0,0" />
-                        </StackPanel>
-                    </Grid>
+                <c:SettingCard Icon="Info24" Title="immurok for Windows" Description="{loc:Tr about.desc}" />
 
-                    <!-- 发布说明 -->
-                    <ui:InfoBar x:Name="NotesBar" Severity="Informational" IsOpen="False" IsClosable="False"
-                                Margin="0,4,0,8" Title="{loc:Tr about.ota.notes}" />
+                <!-- 应用更新：查 GitHub Release，只提示不安装；每天自动查一次（Services/AppUpdate.cs） -->
+                <c:SettingCard Icon="ArrowCircleDown24" Title="{loc:Tr about.app}" Description="{loc:Tr about.app.desc}">
+                    <c:SettingCard.Action>
+                        <ui:Button x:Name="AppCheckBtn" Content="{loc:Tr about.ota.check}" Appearance="Secondary" Click="OnAppCheckClick" />
+                    </c:SettingCard.Action>
+                    <StackPanel x:Name="AppUpdatePanel" Margin="38,12,0,0" Visibility="Collapsed">
+                        <TextBlock x:Name="AppUpdateStatus" Text="" Style="{StaticResource StatusLine}" FontSize="12" TextWrapping="Wrap" />
+                        <ui:Button x:Name="AppDownloadBtn" Content="{loc:Tr about.app.download}" Icon="{ui:SymbolIcon Open24}"
+                                   Appearance="Primary" Click="OnAppDownloadClick" Visibility="Collapsed" Margin="0,10,0,0" />
+                    </StackPanel>
+                </c:SettingCard>
 
-                    <StackPanel Orientation="Horizontal">
-                        <ui:Button x:Name="CheckBtn" Content="{loc:Tr about.ota.check}" Icon="{ui:SymbolIcon ArrowSync24}"
-                                   Click="OnCheckClick" Margin="0,0,8,0" />
+                <!-- 固件更新：「检查更新」放标题行右侧；发现新版后「更新」出现在版本信息下方 -->
+                <c:SettingCard Icon="ArrowSync24" Title="{loc:Tr about.ota}" Description="{loc:Tr about.ota.desc}">
+                    <c:SettingCard.Action>
+                        <ui:Button x:Name="CheckBtn" Content="{loc:Tr about.ota.check}" Appearance="Secondary" Click="OnCheckClick" />
+                    </c:SettingCard.Action>
+                    <StackPanel Margin="38,12,0,0">
+                        <!-- 当前 / 最新版本 -->
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="{loc:Tr about.ota.current}" Style="{StaticResource Caption}" />
+                                <TextBlock x:Name="CurrentVerText" Text="—" Style="{StaticResource BodyStrong}" Margin="0,2,0,0" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Margin="32,0,0,0">
+                                <TextBlock Text="{loc:Tr about.ota.latest}" Style="{StaticResource Caption}" />
+                                <TextBlock x:Name="LatestVerText" Text="—" Style="{StaticResource BodyStrong}" Margin="0,2,0,0" />
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- 发布说明 -->
+                        <ui:InfoBar x:Name="NotesBar" Severity="Informational" IsOpen="False" IsClosable="False"
+                                    Margin="0,12,0,0" Title="{loc:Tr about.ota.notes}" />
+
                         <ui:Button x:Name="UpdateBtn" Content="{loc:Tr about.ota.update}" Icon="{ui:SymbolIcon ArrowDownload24}"
-                                   Appearance="Primary" Click="OnUpdateClick" Visibility="Collapsed" />
-                    </StackPanel>
+                                   Appearance="Primary" Click="OnUpdateClick" Visibility="Collapsed" Margin="0,12,0,0" />
 
-                    <ProgressBar x:Name="OtaProgress" Height="6" Minimum="0" Maximum="100" Value="0"
-                                 Visibility="Collapsed" Margin="0,12,0,4" />
-                    <TextBlock x:Name="OtaStatus" Text="" Opacity="0.8" FontSize="12" Margin="0,4,0,0" TextWrapping="Wrap" />
-                </StackPanel>
-            </ui:Card>
-        </StackPanel>
+                        <ProgressBar x:Name="OtaProgress" Height="4" Minimum="0" Maximum="100" Value="0"
+                                     Visibility="Collapsed" Margin="0,12,0,0" />
+                        <TextBlock x:Name="OtaStatus" Text="" Style="{StaticResource StatusLine}" FontSize="12" Margin="0,8,0,0" />
+                    </StackPanel>
+                </c:SettingCard>
+            </StackPanel>
+        </c:PageContainer>
     </ScrollViewer>
 </Page>

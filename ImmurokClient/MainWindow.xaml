@@ -5,7 +5,7 @@
                  xmlns:loc="clr-namespace:ImmurokClient.Localization"
                  xmlns:pages="clr-namespace:ImmurokClient.Views"
                  Title="immurok"
-                 Width="900" Height="620"
+                 Width="960" Height="680"
                  MinWidth="720" MinHeight="480"
                  ExtendsContentIntoTitleBar="True"
                  WindowBackdropType="Mica"
@@ -17,7 +17,7 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <ui:TitleBar Grid.Row="0" Title="immurok" ShowMaximize="True">
+        <ui:TitleBar x:Name="AppTitleBar" Grid.Row="0" Title="immurok" ShowMaximize="True">
             <ui:TitleBar.Icon>
                 <!-- Source 由代码按主题切换（暗色→白 logo，亮色→黑 logo） -->
                 <ui:ImageIcon x:Name="AppIcon" />
@@ -28,7 +28,7 @@
                            Grid.Row="1"
                            PaneDisplayMode="Left"
                            IsBackButtonVisible="Collapsed"
-                           OpenPaneLength="200">
+                           OpenPaneLength="220">
             <ui:NavigationView.MenuItems>
                 <ui:NavigationViewItem Content="{loc:Tr nav.device}" TargetPageType="{x:Type pages:DevicePage}">
                     <ui:NavigationViewItem.Icon>
@@ -47,7 +47,7 @@
                 </ui:NavigationViewItem>
                 <ui:NavigationViewItem Content="{loc:Tr nav.features}" TargetPageType="{x:Type pages:FeaturesPage}">
                     <ui:NavigationViewItem.Icon>
-                        <ui:SymbolIcon Foreground="{DynamicResource TextFillColorPrimaryBrush}" Symbol="Options24" />
+                        <ui:SymbolIcon Foreground="{DynamicResource TextFillColorPrimaryBrush}" Symbol="ToggleLeft24" />
                     </ui:NavigationViewItem.Icon>
                 </ui:NavigationViewItem>
                 <ui:NavigationViewItem Content="{loc:Tr nav.inject}" TargetPageType="{x:Type pages:PasswordInjectionPage}">
@@ -55,18 +55,19 @@
                         <ui:SymbolIcon Foreground="{DynamicResource TextFillColorPrimaryBrush}" Symbol="Password24" />
                     </ui:NavigationViewItem.Icon>
                 </ui:NavigationViewItem>
+                <ui:NavigationViewItem Content="{loc:Tr nav.status}" TargetPageType="{x:Type pages:StatusPage}">
+                    <ui:NavigationViewItem.Icon>
+                        <ui:SymbolIcon Foreground="{DynamicResource TextFillColorPrimaryBrush}" Symbol="HeartPulse24" />
+                    </ui:NavigationViewItem.Icon>
+                </ui:NavigationViewItem>
+            </ui:NavigationView.MenuItems>
+            <ui:NavigationView.FooterMenuItems>
+                <!-- 「设置」放底部固定区：Windows 应用里设置入口的惯例位置 -->
                 <ui:NavigationViewItem Content="{loc:Tr nav.setup}" TargetPageType="{x:Type pages:SetupPage}">
                     <ui:NavigationViewItem.Icon>
                         <ui:SymbolIcon Foreground="{DynamicResource TextFillColorPrimaryBrush}" Symbol="Settings24" />
                     </ui:NavigationViewItem.Icon>
                 </ui:NavigationViewItem>
-                <ui:NavigationViewItem Content="{loc:Tr nav.status}" TargetPageType="{x:Type pages:StatusPage}">
-                    <ui:NavigationViewItem.Icon>
-                        <ui:SymbolIcon Foreground="{DynamicResource TextFillColorPrimaryBrush}" Symbol="Heart24" />
-                    </ui:NavigationViewItem.Icon>
-                </ui:NavigationViewItem>
-            </ui:NavigationView.MenuItems>
-            <ui:NavigationView.FooterMenuItems>
                 <ui:NavigationViewItem Content="{loc:Tr nav.about}" TargetPageType="{x:Type pages:AboutPage}">
                     <ui:NavigationViewItem.Icon>
                         <ui:SymbolIcon Foreground="{DynamicResource TextFillColorPrimaryBrush}" Symbol="Info24" />

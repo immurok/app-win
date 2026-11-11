@@ -17,7 +17,7 @@ $root     = Split-Path $toolsDir -Parent
 $log      = Join-Path $toolsDir 'last-run.log'
 $svcOut   = Join-Path $toolsDir 'service.out.log'
 $svcErr   = Join-Path $toolsDir 'service.err.log'
-$tfm      = 'net10.0-windows10.0.19041.0'
+$tfm      = 'net10.0-windows10.0.22621.0'
 $binDir   = Join-Path $root "ImmurokService\bin\x64\Debug\$tfm"
 $exe      = Join-Path $binDir 'ImmurokService.exe'
 

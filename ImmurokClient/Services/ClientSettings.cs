@@ -7,7 +7,7 @@ namespace ImmurokClient.Services;
 
 /// <summary>
 /// 客户端本地设置（仅界面偏好，不含机密），存于 %AppData%\immurok\client.json。
-/// 语言、自启初始化标记、横幅折叠、设置向导完成标记、SSH agent 接管前的 git 配置原值。
+/// 语言、自启初始化标记、横幅折叠、设置向导完成标记、SSH agent 接管前的 git 配置原值、应用升级检查的时间与已提示版本。
 /// </summary>
 public static class ClientSettings
 {
@@ -19,6 +19,10 @@ public static class ClientSettings
         public bool SetupCompleted { get; set; }
         /// <summary>开启 SSH agent 时 git 两个键的原值；null = 没接管过（或已还原）。</summary>
         public GitSshPrev? GitSshPrev { get; set; }
+        /// <summary>上次**成功**查询应用新版本的时间（UTC）；null = 从没查成过。</summary>
+        public DateTime? LastAppUpdateCheckUtc { get; set; }
+        /// <summary>已经用托盘通知提示过的应用新版本号，同一版本不重复提示。</summary>
+        public string? AppUpdateNotifiedVersion { get; set; }
     }
 
     private static string Dir =>
@@ -78,6 +82,20 @@ public static class ClientSettings
     {
         get => _data.AutoStartInitialized;
         set { _data.AutoStartInitialized = value; Save(); }
+    }
+
+    /// <summary>上次成功查询应用新版本的时间（UTC），<see cref="AppUpdate"/> 据此保证每天只自动查一次。</summary>
+    public static DateTime? LastAppUpdateCheckUtc
+    {
+        get => _data.LastAppUpdateCheckUtc;
+        set { _data.LastAppUpdateCheckUtc = value; Save(); }
+    }
+
+    /// <summary>已经用托盘通知提示过的应用新版本号（同一版本只提示一次）。</summary>
+    public static string? AppUpdateNotifiedVersion
+    {
+        get => _data.AppUpdateNotifiedVersion;
+        set { _data.AppUpdateNotifiedVersion = value; Save(); }
     }
 
     /// <summary>SSH agent 接管前 git 的 core.sshCommand / gpg.ssh.program 原值（<see cref="SshAgentSwitch"/> 用）。</summary>

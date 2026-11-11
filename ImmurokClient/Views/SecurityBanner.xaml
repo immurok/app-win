@@ -5,18 +5,21 @@
              Visibility="Collapsed">
     <!-- 与 PairingBanner 同款：外边距放在内层 Border 上，整体 Collapsed 时不占空白。放在「功能」页顶部。 -->
     <Grid>
-        <Border x:Name="Bar" CornerRadius="6" Padding="14,10" Margin="0,0,0,14"
-                Background="#2230B050" BorderBrush="#5530B050" BorderThickness="1">
+        <!-- 底色 / 图标色由 Render 按严重度取主题语义色（成功 / 警告），这里的值只是初始态。 -->
+        <Border x:Name="Bar" Style="{StaticResource Banner}"
+                Background="{DynamicResource SystemFillColorSuccessBackgroundBrush}">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="0,0,12,0">
-                    <ui:SymbolIcon x:Name="Icon" Symbol="ShieldCheckmark24" Foreground="#FF30B050" FontSize="18"
-                                   Margin="0,0,8,0" VerticalAlignment="Center" />
-                    <TextBlock x:Name="Text" TextWrapping="Wrap" VerticalAlignment="Center" />
-                </StackPanel>
+                <!-- 不能用横向 StackPanel：它给子元素无限宽度，TextWrapping 不生效。 -->
+                <DockPanel Grid.Column="0" Margin="0,0,12,0">
+                    <ui:SymbolIcon x:Name="Icon" DockPanel.Dock="Left" Symbol="ShieldCheckmark24" Filled="True" FontSize="18"
+                                   Foreground="{DynamicResource SystemFillColorSuccessBrush}"
+                                   Margin="0,0,12,0" VerticalAlignment="Center" />
+                    <TextBlock x:Name="Text" Style="{StaticResource Body}" VerticalAlignment="Center" />
+                </DockPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                     <ui:Button x:Name="DetailsButton" Icon="{ui:SymbolIcon Info24}" Appearance="Primary"
                                Click="OnDetailsClick" Visibility="Collapsed" />
@@ -27,7 +30,7 @@
         </Border>
         <!-- 收起后的绿盾牌：页面右上角一枚，点击展开。 -->
         <ui:Button x:Name="Shield" Icon="{ui:SymbolIcon ShieldCheckmark24}" Appearance="Transparent"
-                   Foreground="#FF30B050" HorizontalAlignment="Right" VerticalAlignment="Top"
+                   Foreground="{DynamicResource SystemFillColorSuccessBrush}" HorizontalAlignment="Right" VerticalAlignment="Top"
                    Margin="0,0,0,8" Padding="6,2" Visibility="Collapsed" Click="OnShieldClick" />
     </Grid>
 </UserControl>

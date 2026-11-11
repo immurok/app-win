@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using ImmurokClient.Localization;
 using ImmurokClient.Services;
 using ImmurokCommon.Protocol;
+using Wpf.Ui.Appearance;
 
 namespace ImmurokClient.Views;
 
@@ -24,18 +25,83 @@ public partial class AboutPage : Page
         {
             Loc.Instance.LanguageChanged -= OnLocLanguageChanged;
             Loc.Instance.LanguageChanged += OnLocLanguageChanged;
+            ApplicationThemeManager.Changed -= OnThemeChanged;
+            ApplicationThemeManager.Changed += OnThemeChanged;
+            UpdateLogo();
+            ShowAppUpdate(AppUpdate.Available);   // 自动检查已发现的新版本，进页面就能看到
             await LoadCurrentVersionAsync();
         };
-        Unloaded += (_, _) => Loc.Instance.LanguageChanged -= OnLocLanguageChanged;
+        Unloaded += (_, _) =>
+        {
+            Loc.Instance.LanguageChanged -= OnLocLanguageChanged;
+            ApplicationThemeManager.Changed -= OnThemeChanged;
+        };
     }
 
-    private async void OnLocLanguageChanged() => await LoadCurrentVersionAsync();
+    private void OnThemeChanged(ApplicationTheme theme, System.Windows.Media.Color accent) => UpdateLogo();
+
+    /// <summary>页头 logo 跟随主题：暗色用白色版，亮色用黑色版（与标题栏图标同一对资源）。</summary>
+    private void UpdateLogo()
+    {
+        bool dark = ApplicationThemeManager.GetAppTheme() == ApplicationTheme.Dark;
+        Logo.Source = new System.Windows.Media.Imaging.BitmapImage(
+            new Uri($"pack://application:,,,/Assets/{(dark ? "immurok-white.png" : "immurok.png")}"));
+    }
+
+    private async void OnLocLanguageChanged()
+    {
+        ShowAppUpdate(AppUpdate.Available);
+        await LoadCurrentVersionAsync();
+    }
+
+    // ---- 应用更新（只提示，不下载安装）----
+
+    /// <summary>有新版本就显示提示和「前往下载」；没有则收起整块。</summary>
+    private void ShowAppUpdate(AppRelease? release)
+    {
+        if (release is null)
+        {
+            AppUpdatePanel.Visibility = Visibility.Collapsed;
+            AppDownloadBtn.Visibility = Visibility.Collapsed;
+            return;
+        }
+        AppUpdateStatus.Text = T("msg.appupdate.available", release.Version, AppVersion);
+        AppDownloadBtn.Visibility = Visibility.Visible;
+        AppUpdatePanel.Visibility = Visibility.Visible;
+    }
+
+    private async void OnAppCheckClick(object sender, RoutedEventArgs e)
+    {
+        AppCheckBtn.IsEnabled = false;
+        AppDownloadBtn.Visibility = Visibility.Collapsed;
+        AppUpdateStatus.Text = T("msg.appupdate.checking");
+        AppUpdatePanel.Visibility = Visibility.Visible;
+        try
+        {
+            AppUpdateResult r = await AppUpdate.CheckAsync();
+            switch (r.State)
+            {
+                case AppUpdateState.Available:
+                    ShowAppUpdate(r.Release);
+                    break;
+                case AppUpdateState.UpToDate:
+                    AppUpdateStatus.Text = T("msg.appupdate.latest", AppVersion);
+                    break;
+                default:
+                    AppUpdateStatus.Text = T("msg.appupdate.fail");
+                    break;
+            }
+        }
+        finally { AppCheckBtn.IsEnabled = true; }
+    }
+
+    private void OnAppDownloadClick(object sender, RoutedEventArgs e) => AppUpdate.OpenReleasePage(AppUpdate.Available);
 
     /// <summary>
     /// 应用版本号取自程序集（源头是 Directory.Build.props 的 &lt;Version&gt;）。
     /// 原来这串是写死在多语言文案里的，升版本时必然漏掉——关于页一直显示 0.1.0。
     /// </summary>
-    private static string AppVersion =>
+    internal static string AppVersion =>
         Assembly.GetExecutingAssembly()
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
             ?.InformationalVersion.Split('+')[0]          // 去掉 SourceLink 追加的 +<commit>
@@ -113,10 +179,7 @@ public partial class AboutPage : Page
     {
         if (_busy || !_updateReady || _deviceVersion is null) return;
 
-        var confirm = MessageBox.Show(
-            T("msg.ota.confirm"),
-            T("about.ota"), MessageBoxButton.OKCancel, MessageBoxImage.Warning);
-        if (confirm != MessageBoxResult.OK) return;
+        if (!MessageDialog.Confirm(Window.GetWindow(this), T("about.ota"), T("msg.ota.confirm"))) return;
 
         _busy = true;
         CheckBtn.IsEnabled = false;

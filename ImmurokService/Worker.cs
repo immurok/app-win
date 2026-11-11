@@ -27,6 +27,7 @@ public sealed class Worker : BackgroundService
     private readonly SshAgentServer _sshAgent;
     private readonly SshAgentFeature _sshFeature;
     private readonly CliServer _cli;
+    private readonly ImmurokService.Wsl.WslBridgeServer _wsl;
     private readonly AppSettings _settings;
     private readonly FpInjectionSignal _injectionSignal;
     private readonly OwnerStore _owner;
@@ -56,8 +57,10 @@ public sealed class Worker : BackgroundService
         AppSettings settings,
         FpInjectionSignal injectionSignal,
         OwnerStore owner,
-        DataDirSecurity dataDir)
+        DataDirSecurity dataDir,
+        ImmurokService.Wsl.WslBridgeServer wsl)
     {
+        _wsl = wsl;
         _log = log;
         _ble = ble;
         _pipe = pipe;
@@ -94,6 +97,9 @@ public sealed class Worker : BackgroundService
 
         // imk CLI 服务：随服务常驻启动。
         _cli.Start();
+
+        // WSL2 支持：开关为开则随服务启动，在 Hyper-V socket 上给 WSL 虚拟机监听。
+        _wsl.StartIfEnabled();
 
         return base.StartAsync(cancellationToken);
     }
@@ -132,8 +138,8 @@ public sealed class Worker : BackgroundService
 
     private void OnConnectionChanged(bool connected)
     {
-        // 连接后刷新 SSH 身份缓存（若 agent 在跑）。
-        if (connected && _sshAgent.IsRunning)
+        // 连接后刷新 SSH 身份缓存（若 agent 管道或 WSL 桥在跑）。
+        if (connected && (_sshAgent.IsRunning || _wsl.IsRunning))
             _ = _sshAgent.RefreshIdentitiesAsync();
     }
 
@@ -278,6 +284,7 @@ public sealed class Worker : BackgroundService
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
         _log.LogInformation("ImmurokService 停止中");
+        await _wsl.StopAsync();
         await _cli.StopAsync();
         await _sshAgent.StopAsync();
         await _pipe.DisposeAsync();

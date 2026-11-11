@@ -57,7 +57,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $toolsDir  = $PSScriptRoot
 $root      = Split-Path $toolsDir -Parent
-$tfm       = 'net10.0-windows10.0.19041.0'
+$tfm       = 'net10.0-windows10.0.22621.0'
 $svcBin    = Join-Path $root "ImmurokService\bin\x64\$Configuration\$tfm"
 $cliBin    = Join-Path $root "ImmurokClient\bin\x64\$Configuration\$tfm"
 $imkBin    = Join-Path $root "ImmurokCli\bin\x64\$Configuration\$tfm"

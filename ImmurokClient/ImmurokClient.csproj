@@ -7,6 +7,7 @@
     <UseWPF>true</UseWPF>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\immurok.ico</ApplicationIcon>
+    <WslPayloadPath Condition="'$(WslPayloadPath)' == ''">$(MSBuildThisFileDirectory)..\packaging\wsl\immurok-wsl-payload.tar.gz</WslPayloadPath>
   </PropertyGroup>
 
   <ItemGroup>
@@ -27,6 +28,17 @@
     <Resource Include="Assets\immurok.png" />
     <!-- 白色版 logo：暗色主题下标题栏图标使用 -->
     <Resource Include="Assets\immurok-white.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- WSL2 支持的 Linux 侧 payload（桥、imk、PAM 模块 + 安装脚本），客户端打开开关时灌进发行版。
+         它是 Linux 构建产物（wsl\build-payload.sh），不入库，默认在 packaging\wsl\ 下：
+         发布工作流的 Linux job 和本机在 WSL 里跑脚本都输出到那里。build-installer.ps1 核对过内容后
+         用 -p:WslPayloadPath 显式传进来。文件不存在时照常编译，开关会提示「缺少 WSL 组件包」。 -->
+    <Content Include="$(WslPayloadPath)" Condition="Exists('$(WslPayloadPath)')"
+             Link="wsl\immurok-wsl-payload.tar.gz">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>

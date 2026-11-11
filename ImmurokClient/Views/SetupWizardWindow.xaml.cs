@@ -334,12 +334,16 @@ public partial class SetupWizardWindow : FluentWindow
         var g = new Grid { Width = 14, Height = 14, VerticalAlignment = VerticalAlignment.Center };
         if (done)
         {
-            g.Children.Add(new Ellipse { Fill = new SolidColorBrush(Color.FromRgb(0x22, 0xC5, 0x5E)) });
-            g.Children.Add(new TextBlock
+            var fill = new Ellipse();
+            fill.SetResourceReference(Shape.FillProperty, Helpers.Ui.Success);
+            g.Children.Add(fill);
+            var check = new TextBlock
             {
-                Text = "✓", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Brushes.White,
+                Text = "✓", FontSize = 9, FontWeight = FontWeights.Bold,
                 HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
-            });
+            };
+            check.SetResourceReference(TextBlock.ForegroundProperty, Helpers.Ui.OnAccent);
+            g.Children.Add(check);
         }
         else if (current)
         {
@@ -682,7 +686,7 @@ public partial class SetupWizardWindow : FluentWindow
         icon.SetResourceReference(ForegroundProperty, brushKey);
         // SymbolIcon 在代码里设 FontSize 不放大（控件模板自己定字号），用 Viewbox 缩放到 48。
         sp.Children.Add(new Viewbox { Child = icon, Width = 48, Height = 48, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 10) });
-        sp.Children.Add(new TextBlock { Text = title, FontSize = 22, FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center });
+        sp.Children.Add(new TextBlock { Text = title, FontSize = 24, FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center, TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap });
         return sp;
     }
 
@@ -714,14 +718,21 @@ public partial class SetupWizardWindow : FluentWindow
         return g;
     }
 
-    private static UIElement Card(UIElement content) => new Border
+    private static UIElement Card(UIElement content)
     {
-        Child = content,
-        CornerRadius = new CornerRadius(8),
-        Padding = new Thickness(14, 12, 14, 12),
-        Margin = new Thickness(0, 0, 0, 16),
-        Background = new SolidColorBrush(Color.FromArgb(0x14, 0x80, 0x80, 0x80)),
-    };
+        var b = new Border
+        {
+            Child = content,
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(16, 12, 16, 12),
+            Margin = new Thickness(0, 0, 0, 16),
+            BorderThickness = new Thickness(1),
+        };
+        // 与主窗口的设置卡片同一套底色 / 描边（主题画刷，深浅色各一套）。
+        b.SetResourceReference(Border.BackgroundProperty, "CardBackgroundFillColorDefaultBrush");
+        b.SetResourceReference(Border.BorderBrushProperty, "CardStrokeColorDefaultBrush");
+        return b;
+    }
 
     private static UIElement InfoCard(string text)
     {

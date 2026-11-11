@@ -80,12 +80,26 @@ public partial class App : Application
 
         // 指纹触发注入：后台轮询服务端信号，命中前台注入项时自动填入密码。
         Services.AppServices.Injection.Start();
+
+        // 应用升级检查：每天自动查一次 GitHub Release，发现新版只用托盘通知提示（不下载、不安装），
+        // 点通知打开 Release 页面。同一版本只提示一次；关于页一直能看到并手动再查。
+        _tray.TrayBalloonTipClicked += (_, _) => Services.AppUpdate.OpenReleasePage(Services.AppUpdate.Available);
+        Services.AppUpdate.StartDailyCheck(release =>
+        {
+            try
+            {
+                _tray?.ShowNotification(
+                    Localization.Loc.Instance.T("msg.appupdate.notify_title"),
+                    Localization.Loc.Instance.T("msg.appupdate.notify_body", release.Version));
+            }
+            catch { /* 通知被系统禁用等：关于页仍会显示新版本 */ }
+        });
     }
 
     /// <summary>
     /// 首屏决策（docs/setup-wizard-flow.md「何时弹出」的 Windows 版）：
-    /// 用户从未点过向导的「完成 / 稍后再说」，或服务连不上、锁屏组件（CP）没登记，就弹设置向导；
-    /// 否则沿用老规则——未绑定才显示主窗口，已绑定只驻托盘。
+    /// 用户从未点过向导的「完成 / 稍后再说」，或本机还没绑定设备，或服务连不上、锁屏组件（CP）没登记，
+    /// 就弹设置向导（未绑定时不看「稍后再说」标记——没绑定什么功能都用不了）；否则只驻托盘。
     /// </summary>
     private async System.Threading.Tasks.Task ShowStartupUiAsync()
     {
@@ -101,13 +115,9 @@ public partial class App : Application
         bool serviceUp = pair is not null;
         bool paired = pair?.Contains("PAIRED") == true && !pair.Contains("UNPAIRED");
 
-        if (!Services.ClientSettings.SetupCompleted || !serviceUp
+        if (!Services.ClientSettings.SetupCompleted || !serviceUp || !paired
             || !Services.SystemComponents.IsCredentialProviderRegistered())
-        {
             ShowSetupWizard();
-            return;
-        }
-        if (!paired) ShowWindow();
     }
 
     /// <summary>打开设置向导（已开着就提到前台）。托盘菜单、设置页、启动时共用。</summary>

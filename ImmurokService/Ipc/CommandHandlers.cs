@@ -31,6 +31,7 @@ public sealed class CommandHandlers
     private readonly DataDirSecurity _dataDir;
     private readonly PairingStore _pairing;
     private readonly SecurityStatus _status;
+    private readonly ImmurokService.Wsl.WslBridgeServer _wsl;
 
     /// <summary>
     /// 「调用方不可信」日志限流：同一映像 + 同一命令 5 分钟只记一条，期间被压掉的条数附在下一条里。
@@ -42,8 +43,10 @@ public sealed class CommandHandlers
     public CommandHandlers(ILogger<CommandHandlers> log, BleManager ble, ImmurokSecurity security,
         CredentialStore creds, SshAgentFeature sshFeature, AppSettings settings, FpInjectionSignal injectionSignal,
         OwnerStore owner, CallerPolicy policy,
-        ScreenUnlocker unlocker, DataDirSecurity dataDir, PairingStore pairing, SecurityStatus status)
+        ScreenUnlocker unlocker, DataDirSecurity dataDir, PairingStore pairing, SecurityStatus status,
+        ImmurokService.Wsl.WslBridgeServer wsl)
     {
+        _wsl = wsl;
         _policy = policy;
         _unlocker = unlocker;
         _dataDir = dataDir;
@@ -65,7 +68,7 @@ public sealed class CommandHandlers
     private static readonly HashSet<string> ReadOnlyCommands = new(StringComparer.Ordinal)
     {
         "STATUS", "INFO", "CONNPARAMS", "SECURITY:STATUS", "FEATURE:GET", "PASS:STATUS", "PAIR:STATUS", "SLOT:STATUS",
-        "FP:LIST", "FP:SLOTS", "FP:STATUS", "KEY:LIST", "KEY:SSHPUB", "OTA:INFO", "OTA:VERSION", "SSHAGENT:STATUS",
+        "FP:LIST", "FP:SLOTS", "FP:STATUS", "KEY:LIST", "KEY:SSHPUB", "OTA:INFO", "OTA:VERSION", "SSHAGENT:STATUS", "WSL:STATUS",
     };
 
     /// <summary>靠设备指纹门（+ GateBudget）而不靠身份：本来就是给 imk 用的。</summary>
@@ -111,7 +114,7 @@ public sealed class CommandHandlers
     private static string CommandKey(string[] parts)
     {
         string verb = parts[0];
-        return parts.Length >= 2 && verb is "FEATURE" or "PASS" or "PAIR" or "SLOT" or "FP" or "KEY" or "OTA" or "SSHAGENT" or "INJECT" or "SECURITY"
+        return parts.Length >= 2 && verb is "FEATURE" or "PASS" or "PAIR" or "SLOT" or "FP" or "KEY" or "OTA" or "SSHAGENT" or "WSL" or "INJECT" or "SECURITY"
             ? $"{verb}:{parts[1]}"
             : verb;
     }
@@ -171,6 +174,7 @@ public sealed class CommandHandlers
                 IpcProtocol.Slot   => await HandleSlotAsync(parts),
                 IpcProtocol.Key    => await HandleKeyAsync(parts, caller),
                 IpcProtocol.SshAgent => await HandleSshAgentAsync(parts),
+                IpcProtocol.Wsl => await HandleWslAsync(parts, caller),
                 IpcProtocol.Pass   => HandlePass(parts, caller),
                 IpcProtocol.Auth   => await HandleAuthAsync(parts, caller, ct),
                 // 取消进行中的指纹门：不做连接检查，尽力而为（客户端认证弹窗点取消时用）。
@@ -664,6 +668,20 @@ public sealed class CommandHandlers
                 string? code = await _ble.GetOtpCodeAsync(idx);
                 return code is null ? IpcProtocol.Deny : $"{IpcProtocol.Ok}:{code}";
             }
+            case IpcProtocol.KeyApi:
+            {
+                // 读 API 值：与 imk 管道的 GET:api 同一条路径（固件 KEY_READ 指纹门 + GateBudget），
+                // 同样只给 owner。不进 DeviceGatedForAll——这条只给托盘客户端用，imk 走自己的管道。
+                if (DenyIfNotOwner(caller, "KEY:API", out string deny)) return deny;
+                if (parts.Length < 3 || !byte.TryParse(parts[2], out byte idx))
+                    return IpcProtocol.ErrInvalidFormat;
+                byte[]? entry = await _ble.ReadKeyEntryAsync(BleManager.CatApi, idx);
+                if (entry is null || entry.Length <= 32) return IpcProtocol.Deny;
+                // api_entry: name[32] + key[128]。取 key 区，截到首个 NUL。
+                int end = 32;
+                while (end < entry.Length && entry[end] != 0) end++;
+                return $"{IpcProtocol.Ok}:{B64(System.Text.Encoding.UTF8.GetString(entry, 32, end - 32))}";
+            }
             case IpcProtocol.KeyDelete:
             {
                 if (parts.Length < 4 || !byte.TryParse(parts[2], out byte cat) || !byte.TryParse(parts[3], out byte idx))
@@ -797,6 +815,31 @@ public sealed class CommandHandlers
             case "OFF":
                 // OK:RESTORED | NONE | RESTORE_FAILED
                 return $"{IpcProtocol.Ok}:{await _sshFeature.DisableAsync()}";
+            default:
+                return IpcProtocol.ErrUnknownCommand;
+        }
+    }
+
+    /// <summary>
+    /// WSL2 支持开关。ON / OFF 只给 owner：ON 的回包里带 token，谁拿到谁就能让自己的 WSL 走指纹门。
+    /// 不要主机侧门（与 SSHAGENT:ON 同理）：开关本身不放行秘密，WSL 里的 sudo / 签名 / 读秘密各自仍要触摸。
+    /// </summary>
+    private async Task<string> HandleWslAsync(string[] parts, CallerIdentity? caller)
+    {
+        if (parts.Length < 2) return IpcProtocol.ErrInvalidFormat;
+        switch (parts[1])
+        {
+            case "STATUS":
+                return $"{IpcProtocol.Ok}:{(_settings.WslEnabled ? "ON" : "OFF")}";
+            case "ON":
+                if (DenyIfNotOwner(caller, "WSL:ON", out string denyOn)) return denyOn;
+                _log.LogInformation("WSL 支持 -> ON");
+                return $"{IpcProtocol.Ok}:{_wsl.Enable()}";
+            case "OFF":
+                if (DenyIfNotOwner(caller, "WSL:OFF", out string denyOff)) return denyOff;
+                await _wsl.DisableAsync();
+                _log.LogInformation("WSL 支持 -> OFF");
+                return IpcProtocol.Ok;
             default:
                 return IpcProtocol.ErrUnknownCommand;
         }

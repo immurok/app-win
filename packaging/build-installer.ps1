@@ -78,7 +78,13 @@ param(
     [string]$IsccPath     = '',
     # 版本号。留空则取 Directory.Build.props 的 <Version>；CI 里由 tag 传入，
     # 否则打 v0.2.0 的 tag 会发出一个内部仍写着 0.1.0 的包。
-    [string]$Version      = ''
+    [string]$Version      = '',
+    # WSL2 支持的 Linux 侧 payload（桥、imk、PAM 模块 + 安装脚本，Linux 构建产物，见 wsl\build-payload.sh）。
+    # 留空则取 packaging\wsl\immurok-wsl-payload.tar.gz：发布工作流的 Linux job 和本机的 build-payload.sh
+    # 都把产物放在那里。找不到就报错，不出缺件的安装包。
+    [string]$WslPayload   = '',
+    # 明确不带 WSL 支持（客户端的 WSL2 开关会提示缺少组件包）。只用于临时出包。
+    [switch]$SkipWslPayload
 )
 
 $ErrorActionPreference = 'Stop'
@@ -358,6 +364,52 @@ MSBuild\Microsoft\VC\*\Platforms 下找不到 ARM64）。
     $skipped += 'arm64'
 }
 
+
+# ---- WSL payload（先做，免得编译半天最后才发现缺件）----
+# payload 是 Linux 二进制（桥、imk、PAM 模块）+ 安装脚本，由 wsl\build-payload.sh 在 Linux 上产出：
+# 发布工作流里有专门的 Linux job 编好后放到 packaging\wsl\，本机开发则自己在 WSL 里跑一次。
+# 返回 payload 的完整路径；-SkipWslPayload 时返回空串。找不到就报错，不出缺件的安装包。
+function Resolve-WslPayload([string[]]$archs) {
+    if ($SkipWslPayload) {
+        Write-Warning "已指定 -SkipWslPayload：安装包不带 WSL 组件，客户端的 WSL2 开关会提示缺少组件包。"
+        return ''
+    }
+    if ($WslPayload) {
+        if (-not (Test-Path $WslPayload)) { throw "指定的 WSL payload 不存在: $WslPayload" }
+        $path = (Resolve-Path $WslPayload).Path
+    }
+    else {
+        $path = Join-Path $pkgDir 'wsl\immurok-wsl-payload.tar.gz'
+        if (-not (Test-Path $path)) {
+            throw @"
+找不到 WSL payload（WSL2 支持的 Linux 侧组件）: $path
+  · 在 Linux / WSL 里跑 wsl/build-payload.sh（默认就输出到这个位置；需要旁边有 app-linux-rs 的检出，或用 --linux-src 指定）
+  · 或用 -WslPayload 指定一份现成的
+  · 或用 -SkipWslPayload 出不带 WSL 支持的包
+"@
+        }
+    }
+
+    # 内容检查：每个要出的 Windows 架构都得有对应的 Linux 架构（WSL 的架构跟随主机）。
+    $tar = Join-Path $env:SystemRoot 'System32\tar.exe'
+    $entries = & $tar -tzf $path
+    if ($LASTEXITCODE -ne 0) { throw "WSL payload 不是有效的 tar.gz: $path" }
+    $lib = 'usr/local/lib/immurok'
+    $need = @("$lib/VERSION", "$lib/wsl-install.sh", "$lib/wsl-uninstall.sh")
+    foreach ($a in $archs) {
+        $la = if ($a -eq 'arm64') { 'aarch64' } else { 'x86_64' }
+        $need += "$lib/$la/immurok-wsl-bridge", "$lib/$la/imk", "$lib/$la/pam_immurok.so"
+    }
+    $missing = @($need | Where-Object { $entries -notcontains $_ })
+    if ($missing.Count -gt 0) {
+        throw "WSL payload 缺少文件（$path）：`n  $($missing -join "`n  ")`n单架构的 payload 只能配同架构的安装包（-Arch x64 / arm64）。"
+    }
+    $versions = ((& $tar -xzOf $path "$lib/VERSION") | Where-Object { $_ }) -join ', '
+    Ok "    WSL payload 就绪（$versions）"
+    return $path
+}
+$wslPayloadPath = Resolve-WslPayload $targets
+
 $built = @()
 
 foreach ($arch in $targets) {
@@ -399,17 +451,37 @@ Credential Provider 的 ARM64 编译失败（退出码 $LASTEXITCODE）。
     # ---- 3. 发布三个 .NET 程序（框架依赖，同一目录共享依赖 DLL）----
     foreach ($proj in 'ImmurokService','ImmurokClient','ImmurokCli') {
         Info "==> 发布 $proj ($rid) ..."
+        # 客户端带上 WSL payload（见 ImmurokClient.csproj）。跳过时指向一个不存在的路径，
+        # 免得它按默认路径把本机那份捡进来。
+        $extra = @()
+        if ($proj -eq 'ImmurokClient') {
+            $p = if ($wslPayloadPath) { $wslPayloadPath } else { Join-Path $pkgDir 'wsl\.skipped' }
+            $extra = @("-p:WslPayloadPath=$p")
+        }
         dotnet publish (Join-Path $root "$proj\$proj.csproj") `
             -c $Configuration -r $rid --self-contained false `
             -p:Platform=$cppPlatform -p:PublishSingleFile=false `
             -p:Version=$Version -p:AssemblyVersion=$numericVersion -p:FileVersion=$numericVersion `
-            -o $stage --nologo
+            @extra -o $stage --nologo
         if ($LASTEXITCODE -ne 0) { throw "$proj ($rid) 发布失败（退出码 $LASTEXITCODE）。" }
     }
 
     Copy-Item $cpDll $stage -Force
     Copy-Item (Join-Path $root 'ImmurokClient\Assets\immurok.ico') (Join-Path $stage 'immurok.ico') -Force
     Get-ChildItem $stage -Filter *.pdb -Recurse | Remove-Item -Force -ErrorAction SilentlyContinue
+
+    # WSL payload 应该已随 ImmurokClient 发布进 wsl\（见 ImmurokClient.csproj）。按内容核对，
+    # 防的是发布步骤悄悄没带上，或带上的不是刚才校验过的那份。
+    $stagedPayload = Join-Path $stage 'wsl\immurok-wsl-payload.tar.gz'
+    if ($wslPayloadPath) {
+        if (-not (Test-Path $stagedPayload)) { throw "WSL payload 没有进暂存目录: $stagedPayload" }
+        if ((Get-FileHash $stagedPayload -Algorithm SHA256).Hash -ne (Get-FileHash $wslPayloadPath -Algorithm SHA256).Hash) {
+            throw "暂存目录里的 WSL payload 与校验过的那份不一致: $stagedPayload"
+        }
+    }
+    elseif (Test-Path $stagedPayload) {
+        throw "指定了 -SkipWslPayload，暂存目录里却有 WSL payload: $stagedPayload"
+    }
 
     $fileCount = (Get-ChildItem $stage -Recurse -File).Count
     Ok "    暂存目录就绪（$fileCount 个文件）"

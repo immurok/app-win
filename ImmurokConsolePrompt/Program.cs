@@ -7,8 +7,9 @@ using System.Runtime.InteropServices;
 // 通过 stdin 接收状态：
 //   FAIL <n>   按错指纹，剩余 n 次
 //   SIGNING    指纹已过，正在签名
+//   ERROR <c>  最终失败：把错误写成一整行留在终端（不擦除）并退出。c 见文末 ErrorText
 //   END        结束（擦除并退出）
-// stdin 关闭或收到 END 即退出。父进程独立，不影响 Service 自己的控制台。
+// stdin 关闭或收到 END / ERROR 即退出。父进程独立，不影响 Service 自己的控制台。
 
 if (args.Length < 1 || !uint.TryParse(args[0], out uint pid))
     return 1;
@@ -29,20 +30,20 @@ if (conout == INVALID_HANDLE_VALUE)
 if (GetConsoleMode(conout, out uint mode))
     SetConsoleMode(conout, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
 
-const string message = "Touch your immurok to authorize SSH signing... (Ctrl+C to cancel)";
-string[] frames = { "|", "/", "-", "\\" }; // 纯 ASCII，避免老式控制台乱码
+// 文案、帧、节奏与 macOS TerminalSpinner 一致。WriteConsoleW 输出，不受控制台代码页影响。
+const string message = "Please verify your fingerprint...";
+string[] frames = { "⠖", "⠲", "⢲", "⢰", "⣰", "⣠", "⣄", "⣆", "⡆", "⡖" };
 
 // 共享状态（stdin 线程更新，渲染线程读取）。
 object gate = new();
 bool done = false;
 bool signing = false;
-bool failedFinal = false;
 int failRemaining = -1;
 long failUntil = 0;
 
 var render = new Thread(() =>
 {
-    int f = 0;
+    int f = 0, signTick = 0;
     while (true)
     {
         string line;
@@ -50,27 +51,24 @@ var render = new Thread(() =>
         {
             if (done) break;
             long now = Environment.TickCount64;
-            if (failedFinal)
-            {
-                line = "\x1b[31m[X] Authentication failed\x1b[0m";
-            }
-            else if (failRemaining >= 0 && now < failUntil)
+            if (failRemaining >= 0 && now < failUntil)
             {
                 string s = failRemaining == 1 ? "" : "s";
-                line = $"\x1b[31m[!] Fingerprint not matched, {failRemaining} attempt{s} left\x1b[0m";
+                line = $"\x1b[31m✗ Not matched, {failRemaining} attempt{s} left\x1b[0m";
             }
             else if (signing)
             {
-                line = "\x1b[32m[*] Approved, signing...\x1b[0m";
+                int n = signTick++ / 4 % 3 + 1; // 约 0.3 s 换一次点数
+                line = $"\x1b[32m✓ Approved, now signing{new string('.', n)}{new string(' ', 3 - n)}\x1b[0m";
             }
             else
             {
-                line = $"\x1b[33m[{frames[f % frames.Length]}] {message}\x1b[0m";
+                line = $"\x1b[33m{frames[f % frames.Length]} {message}\x1b[0m";
             }
         }
         WriteConsole(conout, "\r\x1b[K" + line);
         f++;
-        Thread.Sleep(90);
+        Thread.Sleep(80);
     }
 });
 render.IsBackground = true;
@@ -78,6 +76,7 @@ render.Start();
 
 // 读 stdin 指令。
 string? cmd;
+string? error = null;
 while ((cmd = Console.In.ReadLine()) != null)
 {
     cmd = cmd.Trim();
@@ -85,15 +84,16 @@ while ((cmd = Console.In.ReadLine()) != null)
     {
         string[] p = cmd.Split(' ');
         int rem = p.Length > 1 && int.TryParse(p[1], out int n) ? n : 0;
-        lock (gate) { failRemaining = rem; failUntil = Environment.TickCount64 + 700; }
+        lock (gate) { failRemaining = rem; failUntil = Environment.TickCount64 + 500; }
     }
     else if (cmd == "SIGNING")
     {
         lock (gate) { signing = true; }
     }
-    else if (cmd == "FAILED")
+    else if (cmd.StartsWith("ERROR", StringComparison.Ordinal))
     {
-        lock (gate) { failedFinal = true; }
+        error = ErrorText(cmd.Length > 6 ? cmd[6..] : "");
+        break;
     }
     else if (cmd == "END")
     {
@@ -103,16 +103,23 @@ while ((cmd = Console.In.ReadLine()) != null)
 
 lock (gate) { done = true; }
 render.Join(300);
-WriteConsole(conout, "\r\x1b[K"); // 擦除本行
+// 正常结束擦除本行；失败时把错误留在终端并换行，ssh / git 自己的报错接在下一行。
+WriteConsole(conout, error is null ? "\r\x1b[K" : $"\r\x1b[K\x1b[31m✗ immurok: {error}\x1b[0m\r\n");
 FreeConsole();
 return 0;
 
-// ---- P/Invoke ----
-static void WriteConsole(IntPtr h, string s)
+static string ErrorText(string code) => code switch
 {
-    byte[] b = System.Text.Encoding.UTF8.GetBytes(s);
-    WriteFile(h, b, (uint)b.Length, out _, IntPtr.Zero);
-}
+    "LINK" => "Bluetooth link not ready for signing (connection parameters too weak). "
+            + "Retry; if it keeps failing, turn Bluetooth off and on.",
+    "REJECTED" => "Fingerprint not matched, signing denied.",
+    "TIMEOUT" => "Time out waiting for fingerprint.",
+    "DISCONNECTED" => "Device not connected.",
+    _ => "Signing failed.",
+};
+
+// ---- P/Invoke ----
+static void WriteConsole(IntPtr h, string s) => WriteConsoleW(h, s, (uint)s.Length, out _, IntPtr.Zero);
 
 partial class Program
 {
@@ -132,6 +139,6 @@ partial class Program
     [DllImport("kernel32.dll", SetLastError = true)] static extern bool GetConsoleMode(IntPtr h, out uint mode);
     [DllImport("kernel32.dll", SetLastError = true)] static extern bool SetConsoleMode(IntPtr h, uint mode);
 
-    [DllImport("kernel32.dll", SetLastError = true)]
-    static extern bool WriteFile(IntPtr h, byte[] buf, uint toWrite, out uint written, IntPtr overlapped);
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    static extern bool WriteConsoleW(IntPtr h, string buf, uint chars, out uint written, IntPtr reserved);
 }

@@ -18,16 +18,16 @@
 
         <ui:TitleBar Grid.Row="0" x:Name="Titlebar" ShowMaximize="False" ShowMinimize="False" />
 
-        <StackPanel Grid.Row="1" Margin="20,8,20,20">
+        <StackPanel Grid.Row="1" Margin="24,8,24,24">
             <!-- 名称 -->
-            <TextBlock Text="{loc:Tr inject.f.name}" Opacity="0.7" FontSize="12" Margin="0,0,0,4" />
+            <TextBlock Text="{loc:Tr inject.f.name}" Style="{StaticResource FieldLabel}" />
             <ui:TextBox x:Name="NameBox" PlaceholderText="{loc:Tr inject.f.name.ph}" />
 
             <!-- 定位目标 -->
-            <TextBlock Text="{loc:Tr inject.f.target}" Opacity="0.7" FontSize="12" Margin="0,14,0,4" />
-            <Border Background="{DynamicResource ControlFillColorDefaultBrush}" CornerRadius="6" Padding="12">
+            <TextBlock Text="{loc:Tr inject.f.target}" Style="{StaticResource FieldLabel}" Margin="0,16,0,4" />
+            <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}" CornerRadius="6" Padding="12">
                 <StackPanel>
-                    <TextBlock x:Name="NoCaptureText" Text="{loc:Tr inject.nocapture}" Opacity="0.5" FontSize="12" />
+                    <TextBlock x:Name="NoCaptureText" Text="{loc:Tr inject.nocapture}" Style="{StaticResource CaptionTertiary}" />
                     <Grid x:Name="CaptureGrid" Visibility="Collapsed">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
@@ -43,23 +43,23 @@
 
                         <!-- 匹配方式：这条注入项实际拿哪种身份认应用（包族名/签名/路径）。
                              放在最前面，因为它决定了下面「应用」那一行显示的是什么。 -->
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="{loc:Tr inject.f.match}" Opacity="0.55" FontSize="11" Margin="0,0,10,3" />
-                        <TextBlock Grid.Row="0" Grid.Column="1" x:Name="MatchKindText" FontSize="11" TextTrimming="CharacterEllipsis" Margin="0,0,0,3" />
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="{loc:Tr inject.f.match}" Style="{StaticResource Caption}" TextWrapping="NoWrap" Margin="0,0,12,3" />
+                        <TextBlock Grid.Row="0" Grid.Column="1" x:Name="MatchKindText" FontSize="12" Foreground="{DynamicResource TextFillColorPrimaryBrush}" TextTrimming="CharacterEllipsis" Margin="0,0,0,3" />
 
-                        <TextBlock Grid.Row="1" Grid.Column="0" Text="{loc:Tr inject.f.app}" Opacity="0.55" FontSize="11" Margin="0,0,10,3" />
-                        <TextBlock Grid.Row="1" Grid.Column="1" x:Name="AppText" FontSize="11" TextTrimming="CharacterEllipsis" Margin="0,0,0,3" />
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="{loc:Tr inject.f.app}" Style="{StaticResource Caption}" TextWrapping="NoWrap" Margin="0,0,12,3" />
+                        <TextBlock Grid.Row="1" Grid.Column="1" x:Name="AppText" FontSize="12" Foreground="{DynamicResource TextFillColorPrimaryBrush}" TextTrimming="CharacterEllipsis" Margin="0,0,0,3" />
 
-                        <TextBlock Grid.Row="2" Grid.Column="0" Text="{loc:Tr inject.f.publisher}" Opacity="0.55" FontSize="11" Margin="0,0,10,3" />
-                        <TextBlock Grid.Row="2" Grid.Column="1" x:Name="PublisherText" FontSize="11" TextTrimming="CharacterEllipsis" Margin="0,0,0,3" />
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="{loc:Tr inject.f.publisher}" Style="{StaticResource Caption}" TextWrapping="NoWrap" Margin="0,0,12,3" />
+                        <TextBlock Grid.Row="2" Grid.Column="1" x:Name="PublisherText" FontSize="12" Foreground="{DynamicResource TextFillColorPrimaryBrush}" TextTrimming="CharacterEllipsis" Margin="0,0,0,3" />
 
-                        <TextBlock Grid.Row="3" Grid.Column="0" Text="{loc:Tr inject.f.signature}" Opacity="0.55" FontSize="11" Margin="0,0,10,3" />
-                        <TextBlock Grid.Row="3" Grid.Column="1" x:Name="SignatureText" FontSize="11" TextTrimming="CharacterEllipsis" Margin="0,0,0,3" />
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="{loc:Tr inject.f.signature}" Style="{StaticResource Caption}" TextWrapping="NoWrap" Margin="0,0,12,3" />
+                        <TextBlock Grid.Row="3" Grid.Column="1" x:Name="SignatureText" FontSize="12" Foreground="{DynamicResource TextFillColorPrimaryBrush}" TextTrimming="CharacterEllipsis" Margin="0,0,0,3" />
 
-                        <TextBlock Grid.Row="4" Grid.Column="0" Text="{loc:Tr inject.f.fieldid}" Opacity="0.55" FontSize="11" Margin="0,0,10,0" />
-                        <TextBlock Grid.Row="4" Grid.Column="1" x:Name="FieldIdText" FontSize="11" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Grid.Row="4" Grid.Column="0" Text="{loc:Tr inject.f.fieldid}" Style="{StaticResource Caption}" TextWrapping="NoWrap" Margin="0,0,12,0" />
+                        <TextBlock Grid.Row="4" Grid.Column="1" x:Name="FieldIdText" FontSize="12" Foreground="{DynamicResource TextFillColorPrimaryBrush}" TextTrimming="CharacterEllipsis" />
                     </Grid>
 
-                    <TextBlock x:Name="WarnText" Foreground="#FFE0A030" FontSize="11" TextWrapping="Wrap"
+                    <TextBlock x:Name="WarnText" Style="{StaticResource CaptionCaution}"
                                Margin="0,8,0,0" Visibility="Collapsed" />
 
                     <ui:Button x:Name="LocateBtn" Content="{loc:Tr inject.capture}"
@@ -68,16 +68,16 @@
             </Border>
 
             <!-- 专属密码 -->
-            <TextBlock Text="{loc:Tr inject.f.password}" Opacity="0.7" FontSize="12" Margin="0,14,0,4" />
+            <TextBlock Text="{loc:Tr inject.f.password}" Style="{StaticResource FieldLabel}" Margin="0,16,0,4" />
             <ui:PasswordBox x:Name="PasswordInput" PlaceholderText="{loc:Tr inject.f.password.ph}" />
 
-            <TextBlock x:Name="ErrText" Foreground="#FFE0645C" FontSize="12" TextWrapping="Wrap"
+            <TextBlock x:Name="ErrText" Style="{StaticResource CaptionCritical}"
                        Margin="0,10,0,0" Visibility="Collapsed" />
 
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
-                <ui:Button x:Name="OkBtn" Content="{loc:Tr common.ok}" Appearance="Primary" MinWidth="88"
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,24,0,0">
+                <ui:Button x:Name="OkBtn" Content="{loc:Tr common.ok}" Appearance="Primary" MinWidth="96"
                            Margin="0,0,8,0" Click="OnOkClick" />
-                <ui:Button x:Name="CancelBtn" Content="{loc:Tr common.cancel}" Appearance="Secondary" MinWidth="88"
+                <ui:Button x:Name="CancelBtn" Content="{loc:Tr common.cancel}" Appearance="Secondary" MinWidth="96"
                            Click="OnCancelClick" />
             </StackPanel>
         </StackPanel>

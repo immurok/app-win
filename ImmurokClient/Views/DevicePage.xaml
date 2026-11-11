@@ -4,127 +4,142 @@
       xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
       xmlns:loc="clr-namespace:ImmurokClient.Localization"
       xmlns:h="clr-namespace:ImmurokClient.Helpers"
+      xmlns:c="clr-namespace:ImmurokClient.Controls"
       Title="{loc:Tr nav.device}">
     <ScrollViewer VerticalScrollBarVisibility="Auto" h:WheelScroll.Enabled="True">
-        <StackPanel Margin="28,24,28,24" MaxWidth="640" HorizontalAlignment="Left">
-            <TextBlock Text="{loc:Tr nav.device}" FontSize="28" FontWeight="Bold" Margin="0,0,0,2" />
-            <TextBlock Text="{loc:Tr device.subtitle}" Opacity="0.6" Margin="0,0,0,20" />
-
-            <!-- 连接状态 -->
-            <ui:Card Margin="0,0,0,14" Padding="18">
-                <StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                        <ui:SymbolIcon Foreground="{DynamicResource TextFillColorPrimaryBrush}" Symbol="Bluetooth24" FontSize="18" Margin="0,0,8,0" />
-                        <TextBlock Text="{loc:Tr device.conn}" FontWeight="SemiBold" VerticalAlignment="Center" />
+        <c:PageContainer>
+            <StackPanel>
+                <!-- 页头：标题 + 说明，刷新放右上角（命令在页顶，不沉到内容底下） -->
+                <!-- 页头：标题 + 说明，命令靠右上；窄到放不下时命令折到说明下面 -->
+                <c:AdaptiveRow Margin="0,0,0,20" MinMainWidth="300" TrailingAlignment="Top">
+                    <StackPanel>
+                        <TextBlock Text="{loc:Tr nav.device}" Style="{StaticResource PageTitle}" />
+                        <TextBlock Text="{loc:Tr device.subtitle}" Style="{StaticResource PageSubtitle}" />
                     </StackPanel>
-                    <TextBlock x:Name="ConnText" Text="{loc:Tr common.querying}" Opacity="0.85" />
-                    <!-- 点固件版本这一行读取链路层实际连接参数（GET_CONN_PARAMS，固件 1.7.2+），与 macOS / Linux 一致 -->
-                    <TextBlock x:Name="InfoText" Text="" Margin="0,6,0,0" Opacity="0.6" FontSize="12"
-                               HorizontalAlignment="Left" Cursor="Hand"
-                               ToolTip="{loc:Tr device.connparams.help}"
-                               MouseLeftButtonUp="OnInfoTextClick" />
-                    <Popup x:Name="ConnParamsPopup" PlacementTarget="{Binding ElementName=InfoText}" Placement="Bottom"
-                           VerticalOffset="6" StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade">
-                        <Border Background="{DynamicResource ApplicationBackgroundBrush}"
-                                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="1"
-                                CornerRadius="6" Padding="14,10" MaxWidth="360">
-                            <StackPanel>
-                                <TextBlock Text="{loc:Tr device.connparams.title}" FontWeight="SemiBold" Margin="0,0,0,6"
-                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                                <TextBlock x:Name="ConnParamsText" TextWrapping="Wrap" FontSize="12" LineHeight="18"
-                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                            </StackPanel>
+                    <ui:Button Content="{loc:Tr common.refresh}" Icon="{ui:SymbolIcon ArrowClockwise24}"
+                               Appearance="Secondary" Margin="0,6,0,0" Click="OnRefreshClick" />
+                </c:AdaptiveRow>
+
+                <!-- 连接状态 -->
+                <c:SettingCard Icon="Bluetooth24" Title="{loc:Tr device.conn}">
+                    <StackPanel Margin="38,10,0,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <!-- 状态点：已连接绿、否则灰（颜色在 RefreshAsync 里按主题画刷设） -->
+                            <Ellipse x:Name="ConnDot" Grid.Column="0" Width="8" Height="8" Margin="0,0,8,0"
+                                     VerticalAlignment="Center"
+                                     Fill="{DynamicResource TextFillColorTertiaryBrush}" />
+                            <TextBlock x:Name="ConnText" Grid.Column="1" Text="{loc:Tr common.querying}"
+                                       Style="{StaticResource BodyStrong}" VerticalAlignment="Center" />
+                        </Grid>
+                        <!-- 点这一行读取链路层实际连接参数（GET_CONN_PARAMS，固件 1.7.2+），与 macOS / Linux 一致。
+                             尾部的小图标是「可点」的提示——以前只有鼠标指针变手形，没人知道能点。 -->
+                        <StackPanel x:Name="InfoRow" Orientation="Horizontal" Margin="0,6,0,0"
+                                    HorizontalAlignment="Left" Background="Transparent" Cursor="Hand"
+                                    ToolTip="{loc:Tr device.connparams.help}"
+                                    MouseLeftButtonUp="OnInfoTextClick" Visibility="Collapsed">
+                            <TextBlock x:Name="InfoText" Text="" Style="{StaticResource Caption}" TextWrapping="NoWrap"
+                                       VerticalAlignment="Center" />
+                            <Viewbox Width="14" Height="14" Margin="6,0,0,0" VerticalAlignment="Center">
+                                <ui:SymbolIcon Symbol="Info24" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                            </Viewbox>
+                        </StackPanel>
+                        <Popup x:Name="ConnParamsPopup" PlacementTarget="{Binding ElementName=InfoRow}" Placement="Bottom"
+                               VerticalOffset="6" StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade">
+                            <Border Background="{DynamicResource ApplicationBackgroundBrush}"
+                                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="1"
+                                    CornerRadius="8" Padding="16,12" MaxWidth="360">
+                                <StackPanel>
+                                    <TextBlock Text="{loc:Tr device.connparams.title}" Style="{StaticResource BodyStrong}"
+                                               Margin="0,0,0,6" />
+                                    <TextBlock x:Name="ConnParamsText" Style="{StaticResource Caption}" LineHeight="18"
+                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                                </StackPanel>
+                            </Border>
+                        </Popup>
+                    </StackPanel>
+                </c:SettingCard>
+
+                <!-- 配对：未配对时「开始配对」是本页的主要动作，放标题行右侧并用强调色 -->
+                <c:SettingCard Icon="Link24" Title="{loc:Tr device.pair}">
+                    <c:SettingCard.Action>
+                        <ui:Button x:Name="PairBtn" Content="{loc:Tr device.pair.start}" Icon="{ui:SymbolIcon Link24}"
+                                   Appearance="Primary" Click="OnPairClick" />
+                    </c:SettingCard.Action>
+                    <StackPanel Margin="38,10,0,0">
+                        <TextBlock x:Name="PairText" Text="{loc:Tr common.querying}" Style="{StaticResource Body}" />
+                        <!-- 配对过程走 PairDialog 分步引导窗；这里只留结果。 -->
+                        <!-- 配对操作的结果单独一行：PairText 是「当前状态」，刷新时会被重写，
+                             把失败原因写在那里等于刷新一次就丢。 -->
+                        <TextBlock x:Name="PairResult" Text="" Margin="0,6,0,0" Style="{StaticResource Caption}"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" Visibility="Collapsed" />
+                        <TextBlock x:Name="PairHint" Text="{loc:Tr device.pair.hint}" Margin="0,6,0,0"
+                                   Style="{StaticResource Caption}" />
+                    </StackPanel>
+                </c:SettingCard>
+
+                <!-- 双主机（说明文字在线 / 离线两套，由代码写进 Description） -->
+                <c:SettingCard x:Name="DualHostCard" Icon="Desktop24" Title="{loc:Tr device.dual}"
+                               Description="{loc:Tr device.dual.desc}" Visibility="Collapsed">
+                    <StackPanel Margin="0,12,0,0">
+                        <!-- 槽位行的按钮由 ConfigureSlotButton 按槽位状态决定：
+                             已占用 → 解绑（本机/另一台），平时不可见、鼠标移到本行才淡入
+                             （Opacity 与 IsHitTestVisible 同步切换，避免点到看不见的按钮）；
+                             空槽 + 本机未配对 → 「在此配对」，属于主要动作，始终可见不藏。 -->
+                        <!-- 行高由 ListRow 的 MinHeight 固定：空槽没有按钮、被占用的槽有按钮，
+                             不定高两行会一高一矮。 -->
+                        <Border x:Name="Slot1Row" Style="{StaticResource ListRow}"
+                                MouseEnter="OnSlotRowHover" MouseLeave="OnSlotRowHover">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" MinWidth="72" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{loc:Tr device.slot1}" Style="{StaticResource BodyStrong}"
+                                           TextWrapping="NoWrap" Margin="0,0,12,0" VerticalAlignment="Center" />
+                                <TextBlock x:Name="Slot1State" Grid.Column="1" Text="" Style="{StaticResource Body}"
+                                           TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" VerticalAlignment="Center" />
+                                <ui:Button x:Name="Slot1ActionBtn" Grid.Column="2"
+                                           Appearance="Secondary" Padding="10,0" FontSize="12" Height="28"
+                                           Opacity="0" IsHitTestVisible="False"
+                                           Click="OnSlotActionClick" />
+                            </Grid>
                         </Border>
-                    </Popup>
-                </StackPanel>
-            </ui:Card>
+                        <Border x:Name="Slot2Row" Style="{StaticResource ListRow}" Margin="0"
+                                MouseEnter="OnSlotRowHover" MouseLeave="OnSlotRowHover">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" MinWidth="72" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{loc:Tr device.slot2}" Style="{StaticResource BodyStrong}"
+                                           TextWrapping="NoWrap" Margin="0,0,12,0" VerticalAlignment="Center" />
+                                <TextBlock x:Name="Slot2State" Grid.Column="1" Text="" Style="{StaticResource Body}"
+                                           TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" VerticalAlignment="Center" />
+                                <ui:Button x:Name="Slot2ActionBtn" Grid.Column="2"
+                                           Appearance="Secondary" Padding="10,0" FontSize="12" Height="28"
+                                           Opacity="0" IsHitTestVisible="False"
+                                           Click="OnSlotActionClick" />
+                            </Grid>
+                        </Border>
 
-            <!-- 配对 -->
-            <ui:Card Margin="0,0,0,14" Padding="18">
-                <StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                        <ui:SymbolIcon Foreground="{DynamicResource TextFillColorPrimaryBrush}" Symbol="Link24" FontSize="18" Margin="0,0,8,0" />
-                        <TextBlock Text="{loc:Tr device.pair}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <!-- 设备不在身边时槽位行不可见（槽位状态要查设备），此时仍需给出「解绑本机」
+                             入口，否则无法改配新设备——所以这个按钮只在离线场景出现。 -->
+                        <ui:Button x:Name="UnbindSelfBtn" Content="{loc:Tr device.unbind.self}" Icon="{ui:SymbolIcon PlugDisconnected24}"
+                                   Appearance="Secondary" Click="OnUnbindSelfClick"
+                                   HorizontalAlignment="Left" Visibility="Collapsed" />
+                        <!-- 无提示文字时整体收起（SetDualHint）：空 TextBlock 也会占一整行，
+                             否则卡片底部凭空多出一段空白。 -->
+                        <TextBlock x:Name="DualHint" Text="" Margin="0,10,0,0" Style="{StaticResource Caption}"
+                                   Visibility="Collapsed" />
                     </StackPanel>
-                    <TextBlock x:Name="PairText" Text="{loc:Tr common.querying}" Opacity="0.85" Margin="0,0,0,10" />
-                    <ui:Button x:Name="PairBtn" Content="{loc:Tr device.pair.start}" Icon="{ui:SymbolIcon Link24}" Click="OnPairClick" />
-                    <!-- 配对过程走 PairDialog 分步引导窗；这里只留结果。 -->
-                    <!-- 配对操作的结果单独一行：PairText 是「当前状态」，刷新时会被重写，
-                         把失败原因写在那里等于刷新一次就丢。 -->
-                    <TextBlock x:Name="PairResult" Text="" Margin="0,8,0,0" Opacity="0.85"
-                               FontSize="12" TextWrapping="Wrap" Visibility="Collapsed" />
-                    <TextBlock x:Name="PairHint"
-                               Text="{loc:Tr device.pair.hint}"
-                               Margin="0,8,0,0" Opacity="0.55" FontSize="12" TextWrapping="Wrap" />
-                </StackPanel>
-            </ui:Card>
-
-            <!-- 双主机 -->
-            <ui:Card x:Name="DualHostCard" Margin="0,0,0,14" Padding="18" Visibility="Collapsed">
-                <StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                        <ui:SymbolIcon Foreground="{DynamicResource TextFillColorPrimaryBrush}" Symbol="Desktop24" FontSize="18" Margin="0,0,8,0" />
-                        <TextBlock Text="{loc:Tr device.dual}" FontWeight="SemiBold" VerticalAlignment="Center" />
-                    </StackPanel>
-                    <TextBlock x:Name="DualDesc" Text="{loc:Tr device.dual.desc}"
-                               Opacity="0.6" FontSize="12" Margin="0,0,0,10" TextWrapping="Wrap" />
-
-                    <!-- 槽位行的按钮由 ConfigureSlotButton 按槽位状态决定：
-                         已占用 → 解绑（本机/另一台），平时不可见、鼠标移到本行才淡入
-                         （Opacity 与 IsHitTestVisible 同步切换，避免点到看不见的按钮）；
-                         空槽 + 本机未配对 → 「在此配对」，属于主要动作，始终可见不藏。 -->
-                    <!-- MinHeight 固定行高：空槽没有按钮、被占用的槽有按钮，不定高两行会一高一矮。
-                         按钮 Height=24，连同 Padding 一起收在 32 之内，两行始终等高。 -->
-                    <Border x:Name="Slot1Row" CornerRadius="6" Padding="12,4" Margin="0,0,0,6" MinHeight="32"
-                            Background="#14808080"
-                            MouseEnter="OnSlotRowHover" MouseLeave="OnSlotRowHover">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" Orientation="Horizontal">
-                                <TextBlock Text="{loc:Tr device.slot1}" Width="60" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                <TextBlock x:Name="Slot1State" Text="" VerticalAlignment="Center" />
-                            </StackPanel>
-                            <ui:Button x:Name="Slot1ActionBtn" Grid.Column="1"
-                                       Appearance="Secondary" Padding="10,0" FontSize="12" Height="24"
-                                       Opacity="0" IsHitTestVisible="False"
-                                       Click="OnSlotActionClick" />
-                        </Grid>
-                    </Border>
-                    <Border x:Name="Slot2Row" CornerRadius="6" Padding="12,4" Margin="0" MinHeight="32"
-                            Background="#14808080"
-                            MouseEnter="OnSlotRowHover" MouseLeave="OnSlotRowHover">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" Orientation="Horizontal">
-                                <TextBlock Text="{loc:Tr device.slot2}" Width="60" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                <TextBlock x:Name="Slot2State" Text="" VerticalAlignment="Center" />
-                            </StackPanel>
-                            <ui:Button x:Name="Slot2ActionBtn" Grid.Column="1"
-                                       Appearance="Secondary" Padding="10,0" FontSize="12" Height="24"
-                                       Opacity="0" IsHitTestVisible="False"
-                                       Click="OnSlotActionClick" />
-                        </Grid>
-                    </Border>
-
-                    <!-- 设备不在身边时槽位行不可见（槽位状态要查设备），此时仍需给出「解绑本机」
-                         入口，否则无法改配新设备——所以这个按钮只在离线场景出现。 -->
-                    <ui:Button x:Name="UnbindSelfBtn" Content="{loc:Tr device.unbind.self}" Icon="{ui:SymbolIcon PlugDisconnected24}"
-                               Appearance="Secondary" Click="OnUnbindSelfClick"
-                               HorizontalAlignment="Left" Margin="0,10,0,0" Visibility="Collapsed" />
-                    <!-- 无提示文字时整体收起（SetDualHint）：空 TextBlock 也会占一整行，
-                         否则卡片底部凭空多出一段空白。 -->
-                    <TextBlock x:Name="DualHint" Text="" Margin="0,10,0,0" Opacity="0.7" FontSize="12"
-                               TextWrapping="Wrap" Visibility="Collapsed" />
-                </StackPanel>
-            </ui:Card>
-
-            <ui:Button Content="{loc:Tr common.refresh}" Icon="{ui:SymbolIcon ArrowClockwise24}" Appearance="Secondary" Click="OnRefreshClick" />
-        </StackPanel>
+                </c:SettingCard>
+            </StackPanel>
+        </c:PageContainer>
     </ScrollViewer>
 </Page>

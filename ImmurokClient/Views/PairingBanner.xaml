@@ -5,18 +5,20 @@
              xmlns:loc="clr-namespace:ImmurokClient.Localization"
              Visibility="Collapsed">
     <!-- 外边距放在内层 Border 上：控件整体 Collapsed 时不能再占一段空白。 -->
-    <Border CornerRadius="6" Padding="14,10" Margin="0,0,0,14"
-            Background="#22E0A030" BorderBrush="#55E0A030" BorderThickness="1">
+    <!-- 配色取主题的「警告」语义色（同 InfoBar 的 Warning），深浅色各有一套，不写死色值。 -->
+    <Border Style="{StaticResource Banner}">
         <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="0,0,12,0">
-                <ui:SymbolIcon Symbol="Warning24" Foreground="#FFE0A030" FontSize="18"
-                               Margin="0,0,8,0" VerticalAlignment="Center" />
-                <TextBlock Text="{loc:Tr msg.pair.required_banner}" TextWrapping="Wrap" VerticalAlignment="Center" />
-            </StackPanel>
+            <!-- 不能用横向 StackPanel：它给子元素无限宽度，TextWrapping 不生效，长文案（德语等）会被截断。 -->
+            <DockPanel Grid.Column="0" Margin="0,0,12,0">
+                <ui:SymbolIcon DockPanel.Dock="Left" Symbol="Warning24" Filled="True" FontSize="18"
+                               Foreground="{DynamicResource SystemFillColorCautionBrush}"
+                               Margin="0,0,12,0" VerticalAlignment="Center" />
+                <TextBlock Text="{loc:Tr msg.pair.required_banner}" Style="{StaticResource Body}" VerticalAlignment="Center" />
+            </DockPanel>
             <ui:Button Grid.Column="1" Content="{loc:Tr msg.pair.goto}" Icon="{ui:SymbolIcon Link24}"
                        Appearance="Primary" Click="OnGoClick" VerticalAlignment="Center" />
         </Grid>

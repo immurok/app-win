@@ -33,10 +33,12 @@ public partial class PairDialog : FluentWindow
     /// <summary>用户主动关窗时的终态串，与 EnrollDialog 的取消约定一致。</summary>
     public const string Cancelled = "CANCELLED";
 
-    private static readonly Brush Accent = new SolidColorBrush(Color.FromRgb(0x00, 0x78, 0xD4));
-    private static readonly Brush Done = new SolidColorBrush(Color.FromRgb(0x22, 0xC5, 0x5E));
-    private static readonly Brush Idle = new SolidColorBrush(Color.FromArgb(0x28, 0x80, 0x80, 0x80));
-    private static readonly Brush OnAccent = Brushes.White;
+    // 步骤徽标的颜色：主题画刷键（进行中 = 系统强调色，完成 = 成功色，未到 = 中性底），
+    // 用 SetResourceReference 挂上去，深浅色和强调色变化都跟着走。
+    private const string AccentKey = Helpers.Ui.Accent;
+    private const string DoneKey = Helpers.Ui.Success;
+    private const string IdleKey = "ControlFillColorSecondaryBrush";
+    private const string OnAccentKey = Helpers.Ui.OnAccent;
 
     private enum Stage { WaitFingerprint, WaitButton, Computing }
     private enum StepState { Pending, Active, Done }
@@ -208,9 +210,9 @@ public partial class PairDialog : FluentWindow
         switch (state)
         {
             case StepState.Done:
-                badge.Background = Done;
+                badge.SetResourceReference(Border.BackgroundProperty, DoneKey);
                 num.Text = "✓";
-                num.Foreground = OnAccent;
+                num.SetResourceReference(TextBlock.ForegroundProperty, OnAccentKey);
                 badge.BeginAnimation(OpacityProperty, null);
                 badge.Opacity = 1;
                 title.Opacity = hint.Opacity = 0.55;
@@ -218,9 +220,9 @@ public partial class PairDialog : FluentWindow
                 break;
 
             case StepState.Active:
-                badge.Background = Accent;
+                badge.SetResourceReference(Border.BackgroundProperty, AccentKey);
                 num.Text = number;
-                num.Foreground = OnAccent;
+                num.SetResourceReference(TextBlock.ForegroundProperty, OnAccentKey);
                 title.Opacity = 1;
                 hint.Opacity = 0.7;
                 title.FontWeight = FontWeights.SemiBold;
@@ -234,9 +236,9 @@ public partial class PairDialog : FluentWindow
                 break;
 
             default:
-                badge.Background = Idle;
+                badge.SetResourceReference(Border.BackgroundProperty, IdleKey);
                 num.Text = number;
-                num.ClearValue(TextBlock.ForegroundProperty);
+                num.SetResourceReference(TextBlock.ForegroundProperty, Helpers.Ui.Primary);
                 badge.BeginAnimation(OpacityProperty, null);
                 badge.Opacity = 1;
                 title.Opacity = hint.Opacity = 0.45;

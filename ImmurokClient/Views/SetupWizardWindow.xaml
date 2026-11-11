@@ -29,8 +29,8 @@
             </Grid.ColumnDefinitions>
 
             <!-- 侧栏：logo + 步骤列表（打勾可回看） -->
-            <Border Grid.Column="0" Background="#0F808080"
-                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="0,0,1,0">
+            <Border Grid.Column="0" Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                    BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,1,0">
                 <StackPanel Margin="16,8,16,16">
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
                         <Image x:Name="Logo" Width="24" Height="24" Margin="0,0,8,0" />
@@ -51,8 +51,8 @@
                 </ScrollViewer>
 
                 <!-- 底栏：左「稍后再说」，右「上一步」+「下一步 / 跳过此步 / 完成」 -->
-                <Border Grid.Row="1" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="0,1,0,0"
-                        Padding="16,12">
+                <Border Grid.Row="1" BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0"
+                        Padding="24,16">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
@@ -63,8 +63,8 @@
                                    Appearance="Transparent" Click="OnLaterClick" />
                         <StackPanel Grid.Column="2" Orientation="Horizontal">
                             <ui:Button x:Name="PrevBtn" Content="{loc:Tr wizard.prev}" Appearance="Secondary"
-                                       MinWidth="88" Margin="0,0,8,0" Click="OnPrevClick" />
-                            <ui:Button x:Name="NextBtn" MinWidth="88" Click="OnNextClick" />
+                                       MinWidth="96" Margin="0,0,8,0" Click="OnPrevClick" />
+                            <ui:Button x:Name="NextBtn" MinWidth="96" Click="OnNextClick" />
                         </StackPanel>
                     </Grid>
                 </Border>

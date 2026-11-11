@@ -209,6 +209,10 @@ public sealed class PipeClient
     public Task<string?> KeyOtpAsync(byte idx, CancellationToken ct = default)
         => SendAsync($"{IpcProtocol.Key}:{IpcProtocol.KeyOtp}:{idx}", timeoutMs: 35000, ct: ct);
 
+    /// <summary>读 API 密钥的值（含指纹门；Keys 页用它复制到剪贴板）。-> OK:&lt;b64value&gt; | DENY。</summary>
+    public Task<string?> KeyApiAsync(byte idx, CancellationToken ct = default)
+        => SendAsync($"{IpcProtocol.Key}:{IpcProtocol.KeyApi}:{idx}", timeoutMs: 35000, ct: ct);
+
     public Task<string?> KeyDeleteAsync(byte cat, byte idx, CancellationToken ct = default)
         => SendAsync($"{IpcProtocol.Key}:{IpcProtocol.KeyDelete}:{cat}:{idx}", timeoutMs: 35000, ct: ct);
 
@@ -238,4 +242,12 @@ public sealed class PipeClient
     /// <summary>启停 SSH agent（不需设备触摸；每次签名各自过指纹门）。</summary>
     public Task<string?> SshAgentSetAsync(bool on, CancellationToken ct = default)
         => SendAsync($"{IpcProtocol.SshAgent}:{(on ? "ON" : "OFF")}", timeoutMs: 20000, ct: ct);
+
+    // ---- WSL2 支持 ----
+    public Task<string?> WslStatusAsync(CancellationToken ct = default)
+        => SendAsync($"{IpcProtocol.Wsl}:STATUS", ct: ct);
+
+    /// <summary>开 / 关 WSL 桥服务端。ON 回 <c>OK:&lt;token&gt;</c>，OFF 回 <c>OK</c>（不需设备触摸）。</summary>
+    public Task<string?> WslSetAsync(bool on, CancellationToken ct = default)
+        => SendAsync($"{IpcProtocol.Wsl}:{(on ? "ON" : "OFF")}", timeoutMs: 20000, ct: ct);
 }

@@ -8,7 +8,7 @@ namespace ImmurokClient.Views;
 
 /// <summary>
 /// 代码构建的登录密码输入对话框：两个掩码字段（输入 + 确认），一致且非空才允许确定。
-/// 纯代码，随应用主题渲染（对齐 InputDialog 风格）。
+/// 纯代码，随应用主题渲染（与 FormDialog 同一套外观）。
 /// </summary>
 internal static class PasswordDialog
 {
@@ -25,6 +25,10 @@ internal static class PasswordDialog
             ExtendsContentIntoTitleBar = true,
             WindowBackdropType = WindowBackdropType.Mica,
             ShowInTaskbar = false,
+            // FluentWindow 的默认样式带 MinWidth=460 / MinHeight=320：内容矮于 320 的小对话框
+            // 会在底部多出一截空白，SizeToContent 形同虚设。清掉下限，让窗口贴合内容。
+            MinWidth = 0,
+            MinHeight = 0,
         };
         if (owner is not null) win.Owner = owner;
 
@@ -32,55 +36,41 @@ internal static class PasswordDialog
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
-        var titleBar = new TitleBar { Title = title };
+        var titleBar = new TitleBar { Title = title, ShowMaximize = false, ShowMinimize = false };
         Grid.SetRow(titleBar, 0);
         root.Children.Add(titleBar);
 
-        var panel = new StackPanel { Margin = new Thickness(20, 8, 20, 20) };
+        var panel = new StackPanel { Margin = new Thickness(24, 8, 24, 24) };
         Grid.SetRow(panel, 1);
         root.Children.Add(panel);
 
-        panel.Children.Add(new System.Windows.Controls.TextBlock
-        {
-            Text = Loc.Instance.T("dialog.pass.enter"),
-            Opacity = 0.7,
-            FontSize = 12,
-            Margin = new Thickness(0, 0, 0, 4),
-        });
-        var pb1 = new System.Windows.Controls.PasswordBox();
+        panel.Children.Add(Helpers.Ui.Text(Loc.Instance.T("dialog.pass.enter"), "FieldLabel"));
+        // WPF-UI 的 PasswordBox：与其它输入框同一套外观，自带「显示密码」按钮。
+        var pb1 = new Wpf.Ui.Controls.PasswordBox();
         panel.Children.Add(pb1);
 
-        panel.Children.Add(new System.Windows.Controls.TextBlock
-        {
-            Text = Loc.Instance.T("dialog.pass.confirm"),
-            Opacity = 0.7,
-            FontSize = 12,
-            Margin = new Thickness(0, 12, 0, 4),
-        });
-        var pb2 = new System.Windows.Controls.PasswordBox();
+        var confirmLabel = Helpers.Ui.Text(Loc.Instance.T("dialog.pass.confirm"), "FieldLabel");
+        confirmLabel.Margin = new Thickness(0, 16, 0, 4);
+        panel.Children.Add(confirmLabel);
+        var pb2 = new Wpf.Ui.Controls.PasswordBox();
         panel.Children.Add(pb2);
 
-        var errText = new System.Windows.Controls.TextBlock
-        {
-            Foreground = System.Windows.Media.Brushes.IndianRed,
-            FontSize = 12,
-            Margin = new Thickness(0, 8, 0, 0),
-            Visibility = Visibility.Collapsed,
-            TextWrapping = TextWrapping.Wrap,
-        };
+        var errText = Helpers.Ui.Text("", "CaptionCritical");
+        errText.Margin = new Thickness(0, 8, 0, 0);
+        errText.Visibility = Visibility.Collapsed;
         panel.Children.Add(errText);
 
         var buttons = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             HorizontalAlignment = HorizontalAlignment.Right,
-            Margin = new Thickness(0, 18, 0, 0),
+            Margin = new Thickness(0, 24, 0, 0),
         };
         var okBtn = new WpfButton
         {
             Content = Loc.Instance.T("common.ok"),
             Appearance = ControlAppearance.Primary,
-            MinWidth = 88,
+            MinWidth = 96,
             Margin = new Thickness(0, 0, 8, 0),
             IsDefault = true,
         };
@@ -88,7 +78,7 @@ internal static class PasswordDialog
         {
             Content = Loc.Instance.T("common.cancel"),
             Appearance = ControlAppearance.Secondary,
-            MinWidth = 88,
+            MinWidth = 96,
             IsCancel = true,
         };
         buttons.Children.Add(okBtn);

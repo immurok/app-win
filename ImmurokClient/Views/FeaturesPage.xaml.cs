@@ -9,7 +9,7 @@ using Wpf.Ui.Controls;
 namespace ImmurokClient.Views;
 
 /// <summary>
-/// 功能开关页：解锁 / 锁屏 / SSH agent / imk agent / OTP。
+/// 功能开关页：解锁 / 锁屏 / SSH agent / WSL2 支持 / imk agent / OTP。
 /// 开关值全部存在 Service 侧（%ProgramData%\immurok\settings.json），各功能入口自行判定，
 /// 所以这里只负责读写，不缓存业务状态。
 /// </summary>
@@ -60,6 +60,7 @@ public partial class FeaturesPage : Page
             SshToggle.IsChecked    = p[3] == "1";
             AgentToggle.IsChecked  = p[4] == "1";
             OtpToggle.IsChecked    = p[5] == "1";
+            WslToggle.IsChecked    = await WslSwitch.IsOnAsync();
             StatusText.Text = "";
 
             // 解锁依赖已配置的登录密码，没配就点亮提示（开关仍可开，只是不会生效）。
@@ -77,6 +78,46 @@ public partial class FeaturesPage : Page
         SshToggle.IsEnabled = on;
         AgentToggle.IsEnabled = on;
         OtpToggle.IsEnabled = on;
+        WslToggle.IsEnabled = on;
+    }
+
+    /// <summary>
+    /// WSL2 支持开关：开 = 服务开监听 + 在每个 WSL2 发行版里装桥并配置 sudo / ssh；关 = 全部撤掉。
+    /// 发行版要先被拉起来，整个过程可能十几秒，期间开关禁用。关闭不要求已配对（要能撤干净）。
+    /// </summary>
+    private async void OnWslToggle(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        bool on = WslToggle.IsChecked == true;
+
+        void Revert()
+        {
+            _loading = true;
+            WslToggle.IsChecked = !on;
+            _loading = false;
+        }
+
+        if (on && !await PairingGuard.EnsurePairedAsync(Window.GetWindow(this)))
+        {
+            Revert();
+            StatusText.Text = T("msg.pair.required_banner");
+            return;
+        }
+
+        WslToggle.IsEnabled = false;
+        StatusText.Text = T("msg.wsl.working");
+        try
+        {
+            var res = await WslSwitch.SetAsync(on);
+            StatusText.Text = WslSwitch.Describe(res, on);
+            if (!res.Ok) Revert();
+        }
+        catch (System.Exception ex)
+        {
+            StatusText.Text = T("common.op_fail", ex.Message);
+            Revert();
+        }
+        finally { WslToggle.IsEnabled = true; }
     }
 
     /// <summary>五个开关共用：功能名放在 Tag 上，直接透传给 Service。</summary>

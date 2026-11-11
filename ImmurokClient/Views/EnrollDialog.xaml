@@ -23,57 +23,61 @@
 
             <!-- 阶段：阶段 1 正中 / 阶段 2 边缘 -->
             <TextBlock x:Name="PhaseText" Text="" HorizontalAlignment="Center"
-                       FontSize="12" Opacity="0.6" Margin="0,0,0,10" />
+                       Style="{StaticResource Caption}" Margin="0,0,0,10" />
 
             <!-- 指纹示意图：传感器底盘 + 指纹纹路 + 该按的位置高亮 + 方向箭头 -->
             <Grid Width="200" Height="200" HorizontalAlignment="Center">
                 <!-- 传感器底盘 -->
                 <Ellipse x:Name="Plate" Width="184" Height="184"
-                         Fill="#14808080" Stroke="#33808080" StrokeThickness="1.5" />
+                         Fill="{DynamicResource SubtleFillColorSecondaryBrush}"
+                         Stroke="{DynamicResource ControlStrongStrokeColorDefaultBrush}" StrokeThickness="1" />
 
                 <!-- 指纹纹路 -->
                 <ui:SymbolIcon x:Name="FpGlyph" Symbol="Fingerprint24" FontSize="118"
                                Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                                HorizontalAlignment="Center" VerticalAlignment="Center" />
 
-                <!-- 该按的位置：半透明高亮圆点，按步骤平移 -->
-                <Ellipse x:Name="Highlight" Width="76" Height="76" Fill="#660078D4"
-                         HorizontalAlignment="Center" VerticalAlignment="Center">
-                    <Ellipse.RenderTransform>
-                        <TranslateTransform x:Name="HighlightShift" X="0" Y="0" />
-                    </Ellipse.RenderTransform>
-                </Ellipse>
+                <!-- 该按的位置：半透明高亮圆点，按步骤平移。颜色取系统强调色；
+                     半透明放在外层 Grid 上——内层 Ellipse 的 Opacity 归呼吸动画用。 -->
+                <Grid Opacity="0.4" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <Ellipse x:Name="Highlight" Width="76" Height="76"
+                             Fill="{DynamicResource SystemAccentColorPrimaryBrush}">
+                        <Ellipse.RenderTransform>
+                            <TranslateTransform x:Name="HighlightShift" X="0" Y="0" />
+                        </Ellipse.RenderTransform>
+                    </Ellipse>
+                </Grid>
 
                 <!-- 方向箭头：整层绕中心旋转，顶部的箭头即绕圈指向各方位 -->
                 <Grid x:Name="ArrowLayer" RenderTransformOrigin="0.5,0.5">
                     <Grid.RenderTransform>
                         <RotateTransform x:Name="ArrowRotate" Angle="0" />
                     </Grid.RenderTransform>
-                    <Polygon x:Name="DirArrow" Points="11,0 22,19 0,19" Fill="#FF0078D4"
+                    <Polygon x:Name="DirArrow" Points="11,0 22,19 0,19" Fill="{DynamicResource SystemAccentColorPrimaryBrush}"
                              HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,-2,0,0" />
                 </Grid>
 
                 <!-- 成功对勾（用 Path 画，不依赖图标字体里的具体符号名） -->
                 <Path x:Name="DoneGlyph" Visibility="Collapsed"
                       Data="M 0,24 L 18,42 L 50,4"
-                      Stroke="#FF22C55E" StrokeThickness="8"
+                      Stroke="{DynamicResource SystemFillColorSuccessBrush}" StrokeThickness="8"
                       StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
                       HorizontalAlignment="Center" VerticalAlignment="Center" />
             </Grid>
 
             <!-- 主提示：按哪儿 / 抬起手指 -->
             <TextBlock x:Name="StepText" Text="" HorizontalAlignment="Center" TextAlignment="Center"
-                       FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,14,0,0" />
+                       Style="{StaticResource Subtitle}" FontSize="18" Margin="0,14,0,0" />
 
             <!-- 次级提示 -->
             <TextBlock x:Name="HintText" Text="" HorizontalAlignment="Center" TextAlignment="Center"
-                       FontSize="12" Opacity="0.65" TextWrapping="Wrap" Margin="0,6,0,0" MinHeight="32" />
+                       Style="{StaticResource Caption}" Margin="0,6,0,0" MinHeight="32" />
 
             <!-- 进度：分段圆点 + 进度条 + 计数 -->
             <StackPanel x:Name="Dots" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,4,0,8" />
-            <ProgressBar x:Name="CaptureProgress" Height="6" Minimum="0" Maximum="100" Value="0" />
+            <ProgressBar x:Name="CaptureProgress" Height="4" Minimum="0" Maximum="100" Value="0" />
             <TextBlock x:Name="CountText" Text="" HorizontalAlignment="Center"
-                       FontSize="12" Opacity="0.6" Margin="0,8,0,0" />
+                       Style="{StaticResource Caption}" Margin="0,8,0,0" />
 
             <!-- 按钮 -->
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">

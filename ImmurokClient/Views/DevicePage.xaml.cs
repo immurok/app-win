@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using ImmurokClient.Helpers;
 using ImmurokClient.Localization;
 using ImmurokClient.Services;
 using ImmurokCommon.Protocol;
@@ -85,9 +86,12 @@ public partial class DevicePage : Page
             string name = p.Length >= 3 ? p[2] : "";
             ConnText.Text = connected ? T("msg.dev.connected", name) : T("msg.dev.not_connected");
         }
+        ConnDot.SetResourceReference(System.Windows.Shapes.Shape.FillProperty,
+            connected ? Ui.Success : Ui.Tertiary);
 
         // 设备信息
         InfoText.Text = "";
+        InfoRow.Visibility = Visibility.Collapsed;
         _firmware = null;
         ConnParamsPopup.IsOpen = false;
         if (connected)
@@ -100,6 +104,7 @@ public partial class DevicePage : Page
                 {
                     string batt = ip[2] == "-1" ? T("common.unknown") : $"{ip[2]}%";
                     InfoText.Text = T("msg.dev.info", batt, ip[3], ip[4]);
+                    InfoRow.Visibility = Visibility.Visible;
                     _firmware = ip[3];
                 }
             }
@@ -153,7 +158,7 @@ public partial class DevicePage : Page
         if (!connected)
         {
             if (!paired) return;
-            DualDesc.Text = T("device.dual.desc_offline");
+            DualHostCard.Description = T("device.dual.desc_offline");
             Slot1Row.Visibility = Visibility.Collapsed;
             Slot2Row.Visibility = Visibility.Collapsed;
             // 槽位行看不见，行内的悬停按钮也就无从触达：离线时用独立的「解绑本机」按钮兜底。
@@ -164,7 +169,7 @@ public partial class DevicePage : Page
             return;
         }
 
-        DualDesc.Text = T("device.dual.desc");
+        DualHostCard.Description = T("device.dual.desc");
         Slot1Row.Visibility = Visibility.Visible;
         Slot2Row.Visibility = Visibility.Visible;
         UnbindSelfBtn.Visibility = Visibility.Collapsed; // 在线时解绑入口都在槽位行里
@@ -381,8 +386,7 @@ public partial class DevicePage : Page
         if (!_connected)
         {
             SetPairResult(T("msg.pair.notconnected"));
-            MessageBox.Show(Window.GetWindow(this), T("msg.pair.need_connect_body"),
-                T("device.pair"), MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageDialog.Inform(Window.GetWindow(this), T("device.pair"), T("msg.pair.need_connect_body"));
             return;
         }
 
@@ -418,10 +422,10 @@ public partial class DevicePage : Page
     {
         // 两种情况的后果不同，确认文案要分开：
         // 已连接 → 通知设备清槽（设备会重启）；未连接 → 只清本地绑定，设备侧槽位仍占用。
-        var confirm = MessageBox.Show(
-            _connected ? T("msg.unbind.self_confirm") : T("msg.unbind.local_only_confirm"),
-            T("device.unbind.self"), MessageBoxButton.OKCancel, MessageBoxImage.Warning);
-        if (confirm != MessageBoxResult.OK) return;
+        if (!MessageDialog.Confirm(Window.GetWindow(this), T("device.unbind.self"),
+                _connected ? T("msg.unbind.self_confirm") : T("msg.unbind.local_only_confirm"),
+                MessageKind.Danger))
+            return;
 
         SetDualHint(_connected ? T("msg.unbind.self_progress") : T("msg.unbind.local_only_progress"));
         string? r = await AppServices.Pipe.SlotClearOwnAsync();
@@ -444,10 +448,9 @@ public partial class DevicePage : Page
     private async Task OfferLocalUnbindAsync()
     {
         SetDualHint(T("msg.unbind.rejected"));
-        var choice = MessageBox.Show(
-            T("msg.unbind.rejected_offer"),
-            T("device.unbind.self"), MessageBoxButton.OKCancel, MessageBoxImage.Warning);
-        if (choice != MessageBoxResult.OK) return;
+        if (!MessageDialog.Confirm(Window.GetWindow(this), T("device.unbind.self"),
+                T("msg.unbind.rejected_offer"), MessageKind.Danger))
+            return;
 
         string? r = await AppServices.Pipe.PairResetAsync();
         SetDualHint(r?.StartsWith(IpcProtocol.Ok) == true

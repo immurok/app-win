@@ -17,6 +17,9 @@ public partial class MainWindow : FluentWindow
     public MainWindow()
     {
         InitializeComponent();
+        // 标题栏带版本号（源头同关于页：Directory.Build.props 的 <Version>）。
+        // 窗口 Title 保持 "immurok"，任务栏 / Alt-Tab 不带版本。
+        AppTitleBar.Title = $"immurok {Views.AboutPage.AppVersion}";
         Loaded += OnLoaded;
     }
 

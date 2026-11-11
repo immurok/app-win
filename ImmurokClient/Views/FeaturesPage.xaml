@@ -4,111 +4,83 @@
       xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
       xmlns:loc="clr-namespace:ImmurokClient.Localization"
       xmlns:h="clr-namespace:ImmurokClient.Helpers"
+      xmlns:c="clr-namespace:ImmurokClient.Controls"
       xmlns:v="clr-namespace:ImmurokClient.Views"
       Title="{loc:Tr nav.features}">
     <ScrollViewer VerticalScrollBarVisibility="Auto" h:WheelScroll.Enabled="True">
-        <StackPanel Margin="28,24,28,24" MaxWidth="640" HorizontalAlignment="Left">
-            <TextBlock Text="{loc:Tr nav.features}" FontSize="28" FontWeight="Bold" Margin="0,0,0,2" />
-            <TextBlock Text="{loc:Tr features.subtitle}" Opacity="0.6" Margin="0,0,0,20" />
+        <c:PageContainer>
+            <StackPanel>
+                <StackPanel Margin="0,0,0,20">
+                    <TextBlock Text="{loc:Tr nav.features}" Style="{StaticResource PageTitle}" />
+                    <TextBlock Text="{loc:Tr features.subtitle}" Style="{StaticResource PageSubtitle}" />
+                </StackPanel>
 
-            <v:PairingBanner x:Name="PairBanner" />
-            <!-- IPC 加固健康横幅（设计稿 §4）：与功能开关放在一起。 -->
-            <v:SecurityBanner x:Name="SecBanner" />
+                <v:PairingBanner x:Name="PairBanner" />
+                <!-- IPC 加固健康横幅（设计稿 §4）：与功能开关放在一起。 -->
+                <v:SecurityBanner x:Name="SecBanner" />
 
-            <!-- 屏幕解锁 -->
-            <ui:Card Margin="0,0,0,14" Padding="18">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                            <ui:SymbolIcon Foreground="{DynamicResource TextFillColorPrimaryBrush}" Symbol="ShieldKeyhole24" FontSize="18" Margin="0,0,8,0" />
-                            <TextBlock Text="{loc:Tr features.unlock}" FontWeight="SemiBold" VerticalAlignment="Center" />
-                        </StackPanel>
-                        <TextBlock Text="{loc:Tr features.unlock.hint}" Opacity="0.6" FontSize="12" TextWrapping="Wrap" />
-                        <TextBlock x:Name="UnlockWarn" Text="{loc:Tr features.unlock.nopassword}"
-                                   Foreground="#FFE0A030" FontSize="12" Margin="0,6,0,0"
-                                   TextWrapping="Wrap" Visibility="Collapsed" />
-                    </StackPanel>
-                    <ui:ToggleSwitch x:Name="UnlockToggle" Grid.Column="1" VerticalAlignment="Center" Click="OnToggle" Tag="unlock" />
-                </Grid>
-            </ui:Card>
+                <!-- 开关卡片排成一组，卡间距收到 4（Windows 11 设置页同组卡片的间距） -->
 
-            <!-- 屏幕锁定 -->
-            <ui:Card Margin="0,0,0,14" Padding="18">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                            <ui:SymbolIcon Foreground="{DynamicResource TextFillColorPrimaryBrush}" Symbol="Desktop24" FontSize="18" Margin="0,0,8,0" />
-                            <TextBlock Text="{loc:Tr features.lock}" FontWeight="SemiBold" VerticalAlignment="Center" />
-                        </StackPanel>
-                        <TextBlock Text="{loc:Tr features.lock.hint}" Opacity="0.6" FontSize="12" TextWrapping="Wrap" />
-                    </StackPanel>
-                    <ui:ToggleSwitch x:Name="LockToggle" Grid.Column="1" VerticalAlignment="Center" Click="OnToggle" Tag="lock" />
-                </Grid>
-            </ui:Card>
+                <!-- 屏幕解锁 -->
+                <c:SettingCard Icon="ShieldKeyhole24" Title="{loc:Tr features.unlock}"
+                               Description="{loc:Tr features.unlock.hint}" Margin="0,0,0,4">
+                    <c:SettingCard.Action>
+                        <ui:ToggleSwitch x:Name="UnlockToggle" Click="OnToggle" Tag="unlock"
+                                         AutomationProperties.Name="{loc:Tr features.unlock}" />
+                    </c:SettingCard.Action>
+                    <TextBlock x:Name="UnlockWarn" Text="{loc:Tr features.unlock.nopassword}"
+                               Style="{StaticResource CaptionCaution}" Margin="38,6,0,0" Visibility="Collapsed" />
+                </c:SettingCard>
 
-            <!-- SSH agent -->
-            <ui:Card Margin="0,0,0,14" Padding="18">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                            <ui:SymbolIcon Foreground="{DynamicResource TextFillColorPrimaryBrush}" Symbol="Key24" FontSize="18" Margin="0,0,8,0" />
-                            <TextBlock Text="{loc:Tr features.ssh}" FontWeight="SemiBold" VerticalAlignment="Center" />
-                        </StackPanel>
-                        <TextBlock Text="{loc:Tr features.ssh.hint}" Opacity="0.6" FontSize="12" TextWrapping="Wrap" />
-                    </StackPanel>
-                    <ui:ToggleSwitch x:Name="SshToggle" Grid.Column="1" VerticalAlignment="Center" Click="OnToggle" Tag="ssh" />
-                </Grid>
-            </ui:Card>
+                <!-- 屏幕锁定 -->
+                <c:SettingCard Icon="LockClosed24" Title="{loc:Tr features.lock}"
+                               Description="{loc:Tr features.lock.hint}" Margin="0,0,0,4">
+                    <c:SettingCard.Action>
+                        <ui:ToggleSwitch x:Name="LockToggle" Click="OnToggle" Tag="lock"
+                                         AutomationProperties.Name="{loc:Tr features.lock}" />
+                    </c:SettingCard.Action>
+                </c:SettingCard>
 
-            <!-- imk agent -->
-            <ui:Card Margin="0,0,0,14" Padding="18">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                            <ui:SymbolIcon Foreground="{DynamicResource TextFillColorPrimaryBrush}" Symbol="Link24" FontSize="18" Margin="0,0,8,0" />
-                            <TextBlock Text="{loc:Tr features.agent}" FontWeight="SemiBold" VerticalAlignment="Center" />
-                        </StackPanel>
-                        <TextBlock Text="{loc:Tr features.agent.hint}" Opacity="0.6" FontSize="12" TextWrapping="Wrap" />
-                    </StackPanel>
-                    <ui:ToggleSwitch x:Name="AgentToggle" Grid.Column="1" VerticalAlignment="Center" Click="OnToggle" Tag="agent" />
-                </Grid>
-            </ui:Card>
+                <!-- SSH agent -->
+                <c:SettingCard Icon="Key24" Title="{loc:Tr features.ssh}"
+                               Description="{loc:Tr features.ssh.hint}" Margin="0,0,0,4">
+                    <c:SettingCard.Action>
+                        <ui:ToggleSwitch x:Name="SshToggle" Click="OnToggle" Tag="ssh"
+                                         AutomationProperties.Name="{loc:Tr features.ssh}" />
+                    </c:SettingCard.Action>
+                </c:SettingCard>
 
-            <!-- OTP -->
-            <ui:Card Margin="0,0,0,14" Padding="18">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                            <ui:SymbolIcon Foreground="{DynamicResource TextFillColorPrimaryBrush}" Symbol="ArrowClockwise24" FontSize="18" Margin="0,0,8,0" />
-                            <TextBlock Text="{loc:Tr features.otp}" FontWeight="SemiBold" VerticalAlignment="Center" />
-                        </StackPanel>
-                        <TextBlock Text="{loc:Tr features.otp.hint}" Opacity="0.6" FontSize="12" TextWrapping="Wrap" />
-                    </StackPanel>
-                    <ui:ToggleSwitch x:Name="OtpToggle" Grid.Column="1" VerticalAlignment="Center" Click="OnToggle" Tag="otp" />
-                </Grid>
-            </ui:Card>
+                <!-- WSL2 支持：不是 FEATURE:SET 的一员（要在发行版里装 / 撤组件），走专用开关 -->
+                <c:SettingCard Icon="WindowConsole20" Title="{loc:Tr features.wsl}"
+                               Description="{loc:Tr features.wsl.hint}" Margin="0,0,0,4">
+                    <c:SettingCard.Action>
+                        <ui:ToggleSwitch x:Name="WslToggle" Click="OnWslToggle"
+                                         AutomationProperties.Name="{loc:Tr features.wsl}" />
+                    </c:SettingCard.Action>
+                    <TextBlock Text="{loc:Tr features.wsl.note}" TextWrapping="Wrap"
+                               Style="{StaticResource CaptionTertiary}" Margin="38,6,0,0" />
+                </c:SettingCard>
 
-            <TextBlock x:Name="StatusText" Text="" Opacity="0.75" FontSize="12" Margin="0,4,0,0" TextWrapping="Wrap" />
-        </StackPanel>
+                <!-- imk agent -->
+                <c:SettingCard Icon="Bot24" Title="{loc:Tr features.agent}"
+                               Description="{loc:Tr features.agent.hint}" Margin="0,0,0,4">
+                    <c:SettingCard.Action>
+                        <ui:ToggleSwitch x:Name="AgentToggle" Click="OnToggle" Tag="agent"
+                                         AutomationProperties.Name="{loc:Tr features.agent}" />
+                    </c:SettingCard.Action>
+                </c:SettingCard>
+
+                <!-- OTP -->
+                <c:SettingCard Icon="Timer24" Title="{loc:Tr features.otp}"
+                               Description="{loc:Tr features.otp.hint}" Margin="0,0,0,4">
+                    <c:SettingCard.Action>
+                        <ui:ToggleSwitch x:Name="OtpToggle" Click="OnToggle" Tag="otp"
+                                         AutomationProperties.Name="{loc:Tr features.otp}" />
+                    </c:SettingCard.Action>
+                </c:SettingCard>
+
+                <TextBlock x:Name="StatusText" Text="" Style="{StaticResource StatusLine}" Margin="0,8,0,0" />
+            </StackPanel>
+        </c:PageContainer>
     </ScrollViewer>
 </Page>

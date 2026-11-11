@@ -93,6 +93,11 @@ builder.Services.AddSingleton<ImmurokService.Ssh.IWindowsServiceControl>(new Imm
 builder.Services.AddSingleton<ImmurokService.Ssh.ISystemSshAgentPrevStore>(sp => sp.GetRequiredService<AppSettings>());
 builder.Services.AddSingleton<ImmurokService.Ssh.SystemSshAgent>();
 builder.Services.AddSingleton<ImmurokService.Ssh.SshAgentFeature>();
+builder.Services.AddSingleton<KeyQueries>();
+// WSL2 支持：Hyper-V socket 上的桥服务端（sudo 的 PAM / imk / ssh-agent 经 WSL 内的桥转过来）。
+builder.Services.AddSingleton<ImmurokService.Wsl.WslTokenStore>();
+builder.Services.AddSingleton<ImmurokService.Wsl.WslCliSession>();
+builder.Services.AddSingleton<ImmurokService.Wsl.WslBridgeServer>();
 builder.Services.AddSingleton<CommandHandlers>();
 builder.Services.AddSingleton<PipeServer>();
 builder.Services.AddSingleton<CliServer>();
