@@ -189,7 +189,10 @@ jobs:
           # Tags with a SemVer pre-release suffix (e.g. v1.20.0-beta.1) publish
           # as a GitHub pre-release; clean tags (v1.20.0) publish as a full release.
           prerelease: ${{ contains(github.ref_name, '-') }}
+          # Everything between the announce:skip markers is standing install
+          # advice, not a changelog: discord-release.yml leaves it off the card.
           body: |
+            <!-- announce:skip -->
             ${{ env.SIGNING != 'true' && '> **Unsigned build.** SmartScreen will warn on first run.' || '' }}
 
             > The Credential Provider hooks the Windows sign-in path — validate in a
@@ -203,3 +206,14 @@ jobs:
             Pick the package matching your CPU: `x64` for Intel/AMD, `arm64` for
             Windows on Arm. They are not interchangeable — the x64 package refuses
             to install on an Arm64 PC.
+            <!-- /announce:skip -->
+
+  # Discord card. Called from here because the release above is created with
+  # GITHUB_TOKEN, which never triggers `on: release` in another workflow.
+  announce:
+    needs: build
+    if: github.event_name == 'push'
+    uses: ./.github/workflows/discord-release.yml
+    with:
+      tag: ${{ github.ref_name }}
+    secrets: inherit
