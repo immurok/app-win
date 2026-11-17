@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using ImmurokClient.Localization;
 using ImmurokClient.Services;
+using ImmurokCommon.Protocol;
 
 namespace ImmurokClient.Views;
 
@@ -118,7 +119,9 @@ public partial class SetupPage : Page
         string? r = FpAuthDialog.Run(Window.GetWindow(this),
             T("msg.fpauth.pass_set"),
             () => AppServices.Pipe.PassSetAsync(Environment.UserName, pwd));
-        PassHint.Text = r == "OK" ? T("msg.setup.saved") : T("msg.setup.save_fail", r ?? T("msg.setup.pass_cancelled"));
+        PassHint.Text = r == "OK" ? T("msg.setup.saved")
+            : r == IpcProtocol.DenyNoFingerprint ? T("msg.setup.need_fp")
+            : T("msg.setup.save_fail", r ?? T("msg.setup.pass_cancelled"));
         await RefreshAsync();
     }
 

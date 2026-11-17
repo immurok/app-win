@@ -284,6 +284,7 @@
   "msg.pair.waitbutton": "Tiempo de vinculación agotado: no se pulsó el botón del dispositivo en 30 segundos. Inténtalo de nuevo.",
   "msg.pair.waitbutton_fp": "Tiempo de vinculación agotado. El dispositivo ya está vinculado a otro ordenador: apoya primero un dedo registrado y luego pulsa el botón del dispositivo. Si no puedes aportar una huella registrada (p. ej., un dispositivo de segunda mano), restablécelo de fábrica manteniendo pulsado el botón unos 3 segundos (LED amarillo tras 1 s, sigue pulsando hasta el LED rojo) y vuelve a intentarlo.",
   "msg.setup.cleared": "Borrado",
+  "msg.setup.need_fp": "Añade primero una huella y luego establece la contraseña de desbloqueo",
   "msg.setup.need_pass": "Introduzca una contraseña",
   "msg.setup.pass_cancelled": "cancelado o tiempo agotado",
   "msg.setup.pass_configured": "Estado: configurado ✓",

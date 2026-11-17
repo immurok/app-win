@@ -284,6 +284,7 @@
   "msg.pair.waitbutton": "Tempo de vinculação esgotado: o botão do dispositivo não foi pressionado em 30 segundos. Tente novamente.",
   "msg.pair.waitbutton_fp": "Tempo de vinculação esgotado. O dispositivo já está vinculado a outro computador: toque primeiro com um dedo cadastrado e depois pressione o botão do dispositivo. Se não puder fornecer uma digital cadastrada (ex.: dispositivo usado), restaure-o de fábrica mantendo o botão pressionado por cerca de 3 segundos (LED amarelo após 1 s, continue até o LED vermelho) e tente novamente.",
   "msg.setup.cleared": "Limpo",
+  "msg.setup.need_fp": "Adicione primeiro uma impressão digital e depois defina a senha de desbloqueio",
   "msg.setup.need_pass": "Digite uma senha",
   "msg.setup.pass_cancelled": "cancelado ou tempo esgotado",
   "msg.setup.pass_configured": "Estado: configurado ✓",

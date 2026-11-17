@@ -284,6 +284,7 @@
   "msg.pair.waitbutton": "绑定超时：30 秒内没有按设备按钮，请重试。",
   "msg.pair.waitbutton_fp": "绑定超时。设备已绑定另一台电脑：需要先按一次已录入的指纹，再按设备按钮。若无法提供已录入的指纹（如二手设备），请长按设备按钮约 3 秒（1 秒后黄灯，继续按到红灯）恢复出厂后重试。",
   "msg.setup.cleared": "已清除",
+  "msg.setup.need_fp": "请先录入指纹，再设置解锁密码",
   "msg.setup.need_pass": "请输入密码",
   "msg.setup.pass_cancelled": "已取消或超时",
   "msg.setup.pass_configured": "状态：已配置 ✓",

@@ -284,6 +284,7 @@
   "msg.pair.waitbutton": "Délai d'association dépassé : le bouton de l'appareil n'a pas été pressé dans les 30 secondes. Réessayez.",
   "msg.pair.waitbutton_fp": "Délai d'association dépassé. L'appareil est déjà associé à un autre ordinateur : posez d'abord un doigt enregistré, puis appuyez sur le bouton de l'appareil. Si vous ne pouvez pas fournir d'empreinte enregistrée (appareil d'occasion par ex.), réinitialisez-le en maintenant le bouton environ 3 secondes (LED jaune après 1 s, continuez jusqu'à la LED rouge), puis réessayez.",
   "msg.setup.cleared": "Effacé",
+  "msg.setup.need_fp": "Ajoutez d'abord une empreinte, puis définissez le mot de passe de déverrouillage",
   "msg.setup.need_pass": "Veuillez saisir un mot de passe",
   "msg.setup.pass_cancelled": "annulé ou délai dépassé",
   "msg.setup.pass_configured": "État : configuré ✓",

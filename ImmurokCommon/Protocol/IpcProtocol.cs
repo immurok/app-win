@@ -93,6 +93,7 @@ public static class IpcProtocol
     public const string DenyNotOwner = "DENY:NOT_OWNER"; // 调用方 / 目标会话不是设备 owner
     public const string DenyGateRejected = "DENY:GATE_REJECTED"; // 设备指纹门：按错 / 被拒
     public const string DenyGateTimeout  = "DENY:GATE_TIMEOUT";  // 设备指纹门：超时 / 取消
+    public const string DenyNoFingerprint = "DENY:NO_FINGERPRINT"; // 设备上还没有指纹，门无从谈起：先录指纹
     public const string Skip    = "SKIP";
     public const string Busy    = "BUSY";
     public const string Timeout = "TIMEOUT";

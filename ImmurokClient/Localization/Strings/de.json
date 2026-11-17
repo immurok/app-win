@@ -284,6 +284,7 @@
   "msg.pair.waitbutton": "Zeitüberschreitung bei der Verknüpfung: Die Gerätetaste wurde nicht innerhalb von 30 Sekunden gedrückt. Bitte versuchen Sie es erneut.",
   "msg.pair.waitbutton_fp": "Zeitüberschreitung bei der Verknüpfung. Das Gerät ist bereits mit einem anderen Computer verknüpft: Berühren Sie es zuerst mit einem registrierten Finger und drücken Sie dann die Gerätetaste. Wenn Sie keinen registrierten Fingerabdruck haben (z. B. bei einem gebrauchten Gerät), setzen Sie es auf Werkseinstellungen zurück, indem Sie die Taste etwa 3 Sekunden gedrückt halten (nach 1 s gelbe LED, weiter halten bis zur roten LED), und versuchen Sie es dann erneut.",
   "msg.setup.cleared": "Gelöscht",
+  "msg.setup.need_fp": "Fügen Sie zuerst einen Fingerabdruck hinzu und legen Sie dann das Entsperrkennwort fest",
   "msg.setup.need_pass": "Bitte geben Sie ein Passwort ein",
   "msg.setup.pass_cancelled": "abgebrochen oder Zeitüberschreitung",
   "msg.setup.pass_configured": "Status: eingerichtet ✓",

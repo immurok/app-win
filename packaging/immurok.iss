@@ -17,7 +17,7 @@
 ;    并始终保留密码登录作为后备。
 
 #ifndef AppVersion
-  #define AppVersion "0.7.0"
+  #define AppVersion "0.7.1"
 #endif
 #ifndef StageDir
   #define StageDir "stage"
@@ -150,11 +150,9 @@ Filename: "{app}\ImmurokClient.exe"; Description: "Launch immurok"; \
     Flags: postinstall nowait skipifsilent
 
 [UninstallRun]
-; 顺序要紧：先停服务 → 再清凭据（此时 exe 还在）→ 最后删服务
+; 停服务、清登录密码在 [Code] 的 ClearStoredCredential 里做（usUninstall，早于本节，exe 还在）：
+; 那一步要等服务停稳再以 SYSTEM 身份重新拉起，[UninstallRun] 做不了等待和重试。这里只剩删服务。
 Filename: "{sys}\sc.exe"; Parameters: "stop {#ServiceName}"; Flags: runhidden; RunOnceId: "StopSvc"
-; 登录密码以 CRED_PERSIST_LOCAL_MACHINE 存在服务账户（LocalSystem）名下，只有同一身份
-; 删得掉。卸载程序以管理员而非 SYSTEM 运行，所以不能直接 cmdkey，交给服务自己的入口去删。
-Filename: "{app}\ImmurokService.exe"; Parameters: "--clear-credential"; Flags: runhidden; RunOnceId: "ClearCred"
 Filename: "{sys}\sc.exe"; Parameters: "delete {#ServiceName}"; Flags: runhidden; RunOnceId: "DelSvc"
 
 [Code]
@@ -339,19 +337,60 @@ begin
   Sleep(1500);
 end;
 
+{ ---- 卸载：清掉存在凭据管理器里的登录密码 ----
+  密码以 CRED_PERSIST_LOCAL_MACHINE 存在服务账户（LocalSystem）名下，只有 SYSTEM 删得掉。
+  卸载程序只是提权后的管理员，直接跑 ImmurokService.exe --clear-credential 或 cmdkey 删的是
+  管理员自己的凭据集，什么也删不到（旧写法就是这样，还因为「不存在」而报成功）。
+  做法：停服务 → 把服务的 binPath 临时改成带 --clear-credential → 让 SCM 启动一次。
+  SCM 按服务账户拉起进程，它删完凭据直接退出、不连 SCM，所以 sc start 报 1053 是预期结果。
+  服务随后在 [UninstallRun] 里被删，改过的 binPath 不用还原。 }
+procedure ClearStoredCredential();
+var
+  Sc: String;
+  ResultCode, I: Integer;
+begin
+  Sc := ExpandConstant('{sys}\sc.exe');
+  Exec(Sc, 'stop {#ServiceName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+
+  if (not Exec(Sc, ExpandConstant('config {#ServiceName} binPath= "\"{app}\ImmurokService.exe\" --clear-credential"'),
+               '', SW_HIDE, ewWaitUntilTerminated, ResultCode)) or (ResultCode <> 0) then
+  begin
+    Log(Format('ClearStoredCredential: sc config failed (%d), stored login password NOT removed', [ResultCode]));
+    Exit;
+  end;
+
+  { sc stop 是异步的：服务还在 STOP_PENDING 时 start 回 1056（已有实例在跑），等它停稳，最多 20 秒 }
+  for I := 1 to 40 do
+  begin
+    if not Exec(Sc, 'start {#ServiceName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+      Break;
+    if ResultCode <> 1056 then
+      Break;
+    Sleep(500);
+  end;
+
+  if ResultCode = 1053 then
+    Log('ClearStoredCredential: cleanup process ran as the service account')
+  else
+    Log(Format('ClearStoredCredential: unexpected sc start result %d, stored login password may remain', [ResultCode]));
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   ResultCode: Integer;
 begin
   if CurUninstallStep = usUninstall then
+  begin
     Exec(ExpandConstant('{sys}\taskkill.exe'), '/f /im ImmurokClient.exe', '',
          SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    ClearStoredCredential();
+  end;
 
   if CurUninstallStep = usPostUninstall then
   begin
     RemoveFromPath(ExpandConstant('{app}'));
     { 配对数据与日志属于用户数据，询问后再删。
-      登录密码不在此列 —— 它在 [UninstallRun] 里已无条件清掉。 }
+      登录密码不在此列 —— 它在 usUninstall 的 ClearStoredCredential 里已无条件清掉。 }
     if DirExists(ExpandConstant('{commonappdata}\immurok')) then
       if MsgBox('Also delete pairing data and logs (%ProgramData%\immurok)?' + #13#10#13#10 +
                 'You will need to pair the device again.',

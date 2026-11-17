@@ -1373,7 +1373,7 @@ public sealed class BleManager : IAsyncDisposable
         return _gateBudget.TryUse();
     }
 
-    public enum GateOutcome { Ok, Rejected, Timeout }
+    public enum GateOutcome { Ok, Rejected, Timeout, NoFingerprint }
 
     /// <summary>裸指纹认证（AUTH_REQUEST 0x33，含指纹门）。用于 imk agent 运行高危命令前的用户在场确认。</summary>
     public async Task<bool> AuthenticateAsync(int timeoutMs = 30000)
@@ -1394,6 +1394,9 @@ public sealed class BleManager : IAsyncDisposable
             if (res is null) return GateOutcome.Timeout;
             return res is { Length: >= 1 } && res[0] == (byte)ImmurokStatus.Ok ? GateOutcome.Ok : GateOutcome.Rejected;
         }
+        // 设备上一枚指纹都没有时固件直接拒（不亮灯、不等触摸）。单独报出来，
+        // 否则界面只能显示「被拒」，新设备在录指纹之前设密码就是这个结果。
+        if (r[0] == (byte)ImmurokStatus.ErrNoFpEnrolled) return GateOutcome.NoFingerprint;
         return GateOutcome.Rejected;
     }
 

@@ -284,6 +284,7 @@
   "msg.pair.waitbutton": "Linking timed out: the device button was not pressed within 30 seconds. Please try again.",
   "msg.pair.waitbutton_fp": "Linking timed out. The device is already linked to another computer: touch an enrolled finger first, then press the device button. If you cannot provide an enrolled fingerprint (e.g. a second-hand device), factory-reset it by holding the button for about 3 seconds (yellow LED after 1 s, keep holding until red), then try again.",
   "msg.setup.cleared": "Cleared",
+  "msg.setup.need_fp": "Add a fingerprint first, then set the unlock password",
   "msg.setup.need_pass": "Please enter a password",
   "msg.setup.pass_cancelled": "cancelled or timed out",
   "msg.setup.pass_configured": "Status: configured ✓",

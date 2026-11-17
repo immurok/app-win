@@ -284,6 +284,7 @@
   "msg.pair.waitbutton": "綁定逾時：30 秒內沒有按裝置按鈕，請重試。",
   "msg.pair.waitbutton_fp": "綁定逾時。裝置已綁定另一台電腦：需要先按一次已錄入的指紋，再按裝置按鈕。若無法提供已錄入的指紋（如二手裝置），請長按裝置按鈕約 3 秒（1 秒後黃燈，繼續按到紅燈）恢復原廠設定後重試。",
   "msg.setup.cleared": "已清除",
+  "msg.setup.need_fp": "請先錄入指紋，再設定解鎖密碼",
   "msg.setup.need_pass": "請輸入密碼",
   "msg.setup.pass_cancelled": "已取消或逾時",
   "msg.setup.pass_configured": "狀態：已設定 ✓",

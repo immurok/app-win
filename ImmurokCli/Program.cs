@@ -133,6 +133,7 @@ internal static class Program
         "DENY:NOT_OWNER" => "denied: this immurok is paired by another user account on this PC; only that account can use it",
         "DENY:GATE_TIMEOUT" => "denied: fingerprint not touched in time",
         "DENY:GATE_REJECTED" => "denied: fingerprint rejected on the device",
+        "DENY:NO_FINGERPRINT" => "denied: no fingerprint enrolled on the device yet; add one in the immurok app first",
         _ => $"denied ({resp[5..]})",
     };
 

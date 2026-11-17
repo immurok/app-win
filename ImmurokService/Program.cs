@@ -16,12 +16,22 @@ using Serilog;
 //   可在 appsettings.json 的 "Immurok:LogDirectory" 覆盖路径，"Serilog:MinimumLevel" 调级别。
 //   控制台（F5 调试）模式下同时输出到控制台。
 
-// 卸载清理入口（MSI 在移除文件前以 SYSTEM 身份调用）。
-// 登录密码以 CRED_PERSIST_LOCAL_MACHINE 存在服务账户名下，卸载后不能留在系统里，
-// 而只有与写入方相同的身份才删得掉——所以这一步放在服务自身入口，不放外部脚本。
+// 卸载清理入口。
+// 登录密码以 CRED_PERSIST_LOCAL_MACHINE 存在服务账户（LocalSystem）名下，卸载后不能留在系统里，
+// 而只有与写入方相同的身份才删得掉。卸载程序本身只是提权后的管理员，直接跑这个入口删的是
+// 管理员自己的凭据集（什么也删不到）。所以卸载方把服务的 binPath 临时改成带本参数，再让 SCM
+// 启动一次——SCM 按服务账户（SYSTEM）拉起进程（见 packaging/immurok.iss 的 ClearStoredCredential
+// 与 uninstall.ps1）。进程不连 SCM 直接退出，SCM 那边报 1053，属预期。
+// 不是 SYSTEM 时拒绝执行并返回 2：以前这里会因为「凭据不存在」而报成功，实际一个字节都没删。
 // 不启动主机，删完即退。
 if (args.Contains("--clear-credential", StringComparer.OrdinalIgnoreCase))
 {
+    if (System.Security.Principal.WindowsIdentity.GetCurrent().User
+            ?.IsWellKnown(System.Security.Principal.WellKnownSidType.LocalSystemSid) != true)
+    {
+        Console.Error.WriteLine("--clear-credential must run as LocalSystem (the credential lives in the service account's vault).");
+        return 2;
+    }
     return CredentialStore.DeleteStored() ? 0 : 1;
 }
 

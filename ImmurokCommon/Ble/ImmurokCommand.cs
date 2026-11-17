@@ -53,6 +53,7 @@ public enum ImmurokStatus : byte
     WaitFingerprint = 0x11,
     ErrWaitButton   = 0xF0, // PAIR_INIT：等待设备物理按键确认
     ErrNeedsReset   = 0xF1, // PAIR_INIT：设备仍有指纹，需先复位
+    ErrNoFpEnrolled = 0xF3, // 已绑定但没有录入指纹：要过指纹门的命令一律被拒（固件 SEC_ERR_NO_FP_ENROLLED）
     ErrBusy         = 0xFD,
     ErrInvalidParam = 0xFE,
     ErrUnknown      = 0xFF,

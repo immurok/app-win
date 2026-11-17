@@ -223,8 +223,9 @@ public partial class SetupWizardWindow : FluentWindow
     {
         _steps.Clear();
         _steps.Add(Step.Welcome);
+        // 指纹必须排在密码前面：存密码要过设备指纹门，设备上没有指纹时固件直接拒。
         if (!_serviceUp || !_cpRegistered) _steps.Add(Step.Install);
-        _steps.AddRange(new[] { Step.Connect, Step.Pair, Step.Password, Step.Fingerprint, Step.Finish });
+        _steps.AddRange(new[] { Step.Connect, Step.Pair, Step.Fingerprint, Step.Password, Step.Finish });
     }
 
     private bool IsSatisfied(Step s) => s switch
@@ -559,8 +560,8 @@ public partial class SetupWizardWindow : FluentWindow
         var summary = new StackPanel();
         summary.Children.Add(SummaryRow(T("wizard.step.connect"), _connected));
         summary.Children.Add(SummaryRow(T("wizard.step.pair"), Linked));
-        summary.Children.Add(SummaryRow(T("wizard.step.password"), _passConfigured));
         summary.Children.Add(SummaryRow(T("wizard.step.fingerprint"), FpCount > 0));
+        summary.Children.Add(SummaryRow(T("wizard.step.password"), _passConfigured));
         summary.Children.Add(SummaryRow(T("wizard.complete.install"), _serviceUp && _cpRegistered));
         p.Children.Add(Card(summary));
 
@@ -635,6 +636,7 @@ public partial class SetupWizardWindow : FluentWindow
         string? r = FpAuthDialog.Run(this, T("msg.fpauth.pass_set"),
             () => AppServices.Pipe.PassSetAsync(Environment.UserName, pwd));
         if (r == IpcProtocol.Ok) _passConfigured = true;
+        else if (r == IpcProtocol.DenyNoFingerprint) SetMessage(false, T("msg.setup.need_fp"));
         else SetMessage(false, T("msg.setup.save_fail", r ?? T("msg.setup.pass_cancelled")));
         return Task.CompletedTask;
     });

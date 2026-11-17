@@ -149,6 +149,9 @@ public sealed class CommandHandlers
             case BleManager.GateOutcome.Timeout:
                 _log.LogWarning("{Key}：指纹确认超时 / 取消，拒绝", key);
                 return IpcProtocol.DenyGateTimeout;
+            case BleManager.GateOutcome.NoFingerprint:
+                _log.LogWarning("{Key}：设备上还没有指纹，拒绝", key);
+                return IpcProtocol.DenyNoFingerprint;
             default:
                 _log.LogWarning("{Key}：指纹确认未通过，拒绝", key);
                 return IpcProtocol.DenyGateRejected;
