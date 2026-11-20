@@ -78,7 +78,9 @@ public sealed class CommandHandlers
     /// 固件自己不设门、又会产生持久写入的命令：Service 先发 AUTH_REQUEST 逼一次真实触摸。
     /// 固件已设门的（FP:ENROLL/DELETE、KEY:DELETE/ADD*/SSHGEN、SLOT:CLEAR、PAIR:START 的配对流程本身）
     /// 不重复要门，否则用户每个动作要摸两次。
-    /// 只有 PASS:SET（写凭据管理器）和 OTA:PUSH（刷固件）要门。功能开关（FEATURE:SET）和 SSHAGENT:ON
+    /// 只有 PASS:SET（写凭据管理器）要门。OTA:PUSH（刷固件）不要门（2026-11-20 用户决定：无需认证即可升级）：
+    /// 固件包由设备自己验签并防降级，主机推不进伪造或旧版固件；客户端也没有为它弹触摸提示，
+    /// 加门的结果是用户不知道要摸、30s 后升级以「超时」失败。功能开关（FEATURE:SET）和 SSHAGENT:ON
     /// 不要门（2026-09-06 用户决定）：开关本身不放行任何秘密——解锁推密码、SSH 签名、读 OTP 各自仍要触摸，
     /// 攻击者替用户打开开关什么也拿不到，加门只是每次开关多摸一次。关功能、清密码、解绑设备
     /// （PASS:CLEAR、FEATURE:SET:*:0、SSHAGENT:OFF、PAIR:RESET）同样不要门，只受 owner 校验（§3.5）。
@@ -86,7 +88,6 @@ public sealed class CommandHandlers
     private static bool NeedsHostGate(string key) => key switch
     {
         "PASS:SET" => true,
-        "OTA:PUSH" => true,
         _ => false,
     };
 
