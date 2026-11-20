@@ -590,7 +590,14 @@ mod tests {
             libc::openpty(&mut master, &mut slave, std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut())
         };
         assert_eq!(rc, 0, "openpty failed");
-        let name = unsafe { std::ffi::CStr::from_ptr(libc::ptsname(master)) }.to_string_lossy().to_string();
+        // ptsname_r, not ptsname: the latter returns a pointer into one static
+        // buffer, and tests run on parallel threads — two of them opening a pty
+        // at once could each walk away with the other's path, so a spinner drew
+        // on the wrong terminal and its own test read nothing.
+        let mut buf = [0 as libc::c_char; 64];
+        let rc = unsafe { libc::ptsname_r(master, buf.as_mut_ptr(), buf.len()) };
+        assert_eq!(rc, 0, "ptsname_r failed");
+        let name = unsafe { std::ffi::CStr::from_ptr(buf.as_ptr()) }.to_string_lossy().to_string();
         unsafe {
             libc::close(slave);
             libc::fcntl(master, libc::F_SETFL, libc::O_NONBLOCK);
@@ -610,11 +617,25 @@ mod tests {
         seen
     }
 
+    /// Read until every string in `want` has shown up, or give up after a
+    /// deadline far longer than any draw delay. Waiting for something to be
+    /// drawn must not be a fixed window: on a busy CI runner the spinner
+    /// thread can be scheduled later than DRAW_DELAY plus a few tens of
+    /// milliseconds, and a fixed 200 ms read then sees nothing.
+    fn read_until(master: &mut fs::File, want: &[&str]) -> String {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        let mut seen = String::new();
+        while !want.iter().all(|w| seen.contains(w)) && std::time::Instant::now() < deadline {
+            seen.push_str(&read_for(master, 10));
+        }
+        seen
+    }
+
     #[test]
     fn spinner_draws_then_erases() {
         let (mut master, path) = open_pty();
         let sp = Spinner::start(path, Hint::Waiting.message()).unwrap();
-        let seen = read_for(&mut master, 400);
+        let seen = read_until(&mut master, &["Please verify your fingerprint", "\r\x1b[K"]);
         assert!(seen.contains("Please verify your fingerprint"), "{seen:?}");
         assert!(seen.contains("\r\x1b[K"), "{seen:?}");
         sp.finish(None);
@@ -673,15 +694,15 @@ mod tests {
 
         let mut to_client = Vec::new();
         h.host_bytes(&hint_frame(HINT_WAITING, 0), &mut to_client);
-        let seen = read_for(&mut master, 200);
+        let seen = read_until(&mut master, &["Please verify your fingerprint"]);
         assert!(seen.contains("Please verify your fingerprint"), "{seen:?}");
 
         h.host_bytes(&hint_frame(HINT_MISMATCH, 2), &mut to_client);
-        let seen = read_for(&mut master, 200);
+        let seen = read_until(&mut master, &["not recognized", "2 attempts left"]);
         assert!(seen.contains("not recognized") && seen.contains("2 attempts left"), "{seen:?}");
 
         h.host_bytes(&hint_frame(HINT_SIGNING, 0), &mut to_client);
-        let seen = read_for(&mut master, 200);
+        let seen = read_until(&mut master, &["Verified — signing"]);
         assert!(seen.contains("Verified — signing"), "{seen:?}");
         assert!(to_client.is_empty(), "hint frames must not reach the client");
 
@@ -729,7 +750,7 @@ mod tests {
         let h = SignHint::new(child.id());
         let mut sink = Vec::new();
         h.client_bytes(&frame(13, &[]), &mut sink);
-        let seen = read_for(&mut master, 400);
+        let seen = read_until(&mut master, &["Please verify your fingerprint"]);
         assert!(seen.contains("Please verify your fingerprint"), "{seen:?}");
         h.host_bytes(&frame(SSH_AGENT_FAILURE, &[]), &mut sink);
         let tail = read_for(&mut master, 100);

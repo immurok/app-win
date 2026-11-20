@@ -118,7 +118,7 @@ public partial class SetupPage : Page
         // 写凭据要在设备上触摸确认：用统一的指纹等待窗（30s 倒计时 + 取消），取消 / 超时返回 null。
         string? r = FpAuthDialog.Run(Window.GetWindow(this),
             T("msg.fpauth.pass_set"),
-            () => AppServices.Pipe.PassSetAsync(Environment.UserName, pwd));
+            () => AppServices.Pipe.PassSetAsync(LogonName.Current(), pwd));
         PassHint.Text = r == "OK" ? T("msg.setup.saved")
             : r == IpcProtocol.DenyNoFingerprint ? T("msg.setup.need_fp")
             : T("msg.setup.save_fail", r ?? T("msg.setup.pass_cancelled"));

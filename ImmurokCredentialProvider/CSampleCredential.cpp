@@ -423,9 +423,30 @@ HRESULT CSampleCredential::GetSerialization(
 
     HRESULT hr;
 
-    WCHAR wsz[MAX_COMPUTERNAME_LENGTH+1];
+    // The service sends either a bare user name (local / Microsoft account) or a
+    // qualified "DOMAIN\user" (AD: "CORP\alice", Entra ID: "AzureAD\alice@contoso.com").
+    // A bare name, or ".\user", logs on against this computer as before. Forcing the
+    // computer name onto a domain account made LSA look for a local account of that
+    // name and reject the password.
+    WCHAR wsz[256];
     DWORD cch = ARRAYSIZE(wsz);
-    if (GetComputerNameW(wsz, &cch))
+    PWSTR pwzUser = _pwzUsername;
+    BOOL fHaveDomain = FALSE;
+    PWSTR pwzSep = (_pwzUsername != NULL) ? wcschr(_pwzUsername, L'\\') : NULL;
+    if (pwzSep != NULL && pwzSep[1] != L'\0')
+    {
+        size_t cchDomain = pwzSep - _pwzUsername;
+        pwzUser = pwzSep + 1;
+        if (cchDomain > 0 && cchDomain < ARRAYSIZE(wsz) && !(cchDomain == 1 && _pwzUsername[0] == L'.'))
+        {
+            fHaveDomain = SUCCEEDED(StringCchCopyNW(wsz, ARRAYSIZE(wsz), _pwzUsername, cchDomain));
+        }
+    }
+    if (!fHaveDomain)
+    {
+        fHaveDomain = GetComputerNameW(wsz, &cch);
+    }
+    if (fHaveDomain)
     {
         PWSTR pwzProtectedPassword;
 
@@ -436,7 +457,7 @@ HRESULT CSampleCredential::GetSerialization(
             KERB_INTERACTIVE_UNLOCK_LOGON kiul;
 
             // Initialize kiul with weak references to our credential.
-            hr = KerbInteractiveUnlockLogonInit(wsz, _pwzUsername, _pwzPassword, _cpus, &kiul);
+            hr = KerbInteractiveUnlockLogonInit(wsz, pwzUser, _pwzPassword, _cpus, &kiul);
 
             if (SUCCEEDED(hr))
             {

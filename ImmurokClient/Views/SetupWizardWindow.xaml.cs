@@ -634,7 +634,7 @@ public partial class SetupWizardWindow : FluentWindow
 
         // 写凭据要在设备上触摸确认：统一的指纹等待窗（30s 倒计时 + 取消），取消 / 超时返回 null。
         string? r = FpAuthDialog.Run(this, T("msg.fpauth.pass_set"),
-            () => AppServices.Pipe.PassSetAsync(Environment.UserName, pwd));
+            () => AppServices.Pipe.PassSetAsync(LogonName.Current(), pwd));
         if (r == IpcProtocol.Ok) _passConfigured = true;
         else if (r == IpcProtocol.DenyNoFingerprint) SetMessage(false, T("msg.setup.need_fp"));
         else SetMessage(false, T("msg.setup.save_fail", r ?? T("msg.setup.pass_cancelled")));
