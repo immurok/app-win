@@ -47,6 +47,9 @@ public partial class MainWindow : FluentWindow
     /// <summary>「功能」页安全横幅的「查看详情」落点：状态页。</summary>
     public void GoToStatus() => RootNavigation.Navigate(typeof(StatusPage));
 
+    /// <summary>应用更新通知的落点：关于页（那里有「立即更新」）。</summary>
+    public void GoToAbout() => RootNavigation.Navigate(typeof(AboutPage));
+
     private void OnThemeChanged(ApplicationTheme currentTheme, Color accent) => UpdateAppIcon();
 
     /// <summary>

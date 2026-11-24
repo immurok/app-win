@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
-using System.Runtime.InteropServices;
-using System.Security.Cryptography.X509Certificates;
+using ImmurokCommon.Security;
 using Microsoft.Extensions.Logging;
 
 namespace ImmurokService.Ipc;
@@ -77,91 +76,5 @@ public sealed class CallerPolicy
         }
     }
 
-    private static string? Thumbprint(string path)
-    {
-        // SYSLIB0057：X509CertificateLoader 不支持从 PE 的 Authenticode 签名里取证书，没有替代 API。
-#pragma warning disable SYSLIB0057
-        try { return X509Certificate.CreateFromSignedFile(path).GetCertHashString(); }
-#pragma warning restore SYSLIB0057
-        catch { return null; }
-    }
-}
-
-/// <summary><c>WinVerifyTrust</c>（WINTRUST_ACTION_GENERIC_VERIFY_V2，无 UI，不查吊销）。</summary>
-internal static class Authenticode
-{
-    public static bool IsValid(string path)
-    {
-        var fileInfo = new WINTRUST_FILE_INFO
-        {
-            cbStruct = (uint)Marshal.SizeOf<WINTRUST_FILE_INFO>(),
-            pcwszFilePath = path,
-        };
-        IntPtr pFile = Marshal.AllocHGlobal(Marshal.SizeOf<WINTRUST_FILE_INFO>());
-        try
-        {
-            Marshal.StructureToPtr(fileInfo, pFile, false);
-            var data = new WINTRUST_DATA
-            {
-                cbStruct = (uint)Marshal.SizeOf<WINTRUST_DATA>(),
-                dwUIChoice = WTD_UI_NONE,
-                fdwRevocationChecks = WTD_REVOKE_NONE,
-                dwUnionChoice = WTD_CHOICE_FILE,
-                pFile = pFile,
-                dwStateAction = WTD_STATEACTION_VERIFY,
-                dwProvFlags = WTD_CACHE_ONLY_URL_RETRIEVAL,
-            };
-            Guid action = WINTRUST_ACTION_GENERIC_VERIFY_V2;
-            int rc = WinVerifyTrust(IntPtr.Zero, ref action, ref data);
-            data.dwStateAction = WTD_STATEACTION_CLOSE;
-            WinVerifyTrust(IntPtr.Zero, ref action, ref data);
-            return rc == 0;
-        }
-        catch
-        {
-            return false;
-        }
-        finally
-        {
-            Marshal.FreeHGlobal(pFile);
-        }
-    }
-
-    private static readonly Guid WINTRUST_ACTION_GENERIC_VERIFY_V2 = new("00AAC56B-CD44-11d0-8CC2-00C04FC295EE");
-    private const uint WTD_UI_NONE = 2;
-    private const uint WTD_REVOKE_NONE = 0;
-    private const uint WTD_CHOICE_FILE = 1;
-    private const uint WTD_STATEACTION_VERIFY = 1;
-    private const uint WTD_STATEACTION_CLOSE = 2;
-    private const uint WTD_CACHE_ONLY_URL_RETRIEVAL = 0x1000;
-
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    private struct WINTRUST_FILE_INFO
-    {
-        public uint cbStruct;
-        [MarshalAs(UnmanagedType.LPWStr)] public string pcwszFilePath;
-        public IntPtr hFile;
-        public IntPtr pgKnownSubject;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct WINTRUST_DATA
-    {
-        public uint cbStruct;
-        public IntPtr pPolicyCallbackData;
-        public IntPtr pSIPClientData;
-        public uint dwUIChoice;
-        public uint fdwRevocationChecks;
-        public uint dwUnionChoice;
-        public IntPtr pFile;
-        public uint dwStateAction;
-        public IntPtr hWVTStateData;
-        public IntPtr pwszURLReference;
-        public uint dwProvFlags;
-        public uint dwUIContext;
-        public IntPtr pSignatureSettings;
-    }
-
-    [DllImport("wintrust.dll", ExactSpelling = true)]
-    private static extern int WinVerifyTrust(IntPtr hwnd, ref Guid actionId, ref WINTRUST_DATA data);
+    private static string? Thumbprint(string path) => Authenticode.Thumbprint(path);
 }

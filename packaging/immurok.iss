@@ -17,7 +17,7 @@
 ;    并始终保留密码登录作为后备。
 
 #ifndef AppVersion
-  #define AppVersion "0.7.3"
+  #define AppVersion "0.7.4"
 #endif
 #ifndef StageDir
   #define StageDir "stage"
@@ -149,6 +149,13 @@ Filename: "{sys}\sc.exe"; Parameters: "start {#ServiceName}"; \
 Filename: "{app}\ImmurokClient.exe"; Description: "Launch immurok"; \
     Flags: postinstall nowait skipifsilent
 
+; 客户端内自升级（Services/AppUpdate.cs）用 /SILENT /RELAUNCH=1 调起安装包：上面那条 skipifsilent 不跑，
+; 而客户端已被 PrepareToInstall 结束，这里把它重新拉起来。只认显式参数，不按「静默」判断 ——
+; 管理员 /VERYSILENT 批量部署时不该冒出客户端窗口。runasoriginaluser：以点「更新」的那个用户身份运行，
+; 不带安装包的管理员令牌（客户端要在用户会话里做注入）。
+Filename: "{app}\ImmurokClient.exe"; WorkingDir: "{app}"; \
+    Flags: nowait runasoriginaluser; Check: IsRelaunch
+
 [UninstallRun]
 ; 停服务、清登录密码在 [Code] 的 ClearStoredCredential 里做（usUninstall，早于本节，exe 还在）：
 ; 那一步要等服务停稳再以 SYSTEM 身份重新拉起，[UninstallRun] 做不了等待和重试。这里只剩删服务。
@@ -167,23 +174,27 @@ var
   不查注册表（各版本的键名布局有出入，容易误判），直接看共享框架目录下有没有 {#DotNetChannel}.x：
   框架依赖应用默认的 roll-forward 只在同一主版本内滚动，装了别的主版本顶不了。
   commonpf64 下的 dotnet 目录在两种包上都对：x64 包只装 x64 机器，arm64 包装的是原生 ARM64 运行时，
-  两者都落在 Program Files\dotnet（ARM64 机器上的 x64 运行时才会去 dotnet\x64）。 }
-function HasDotNetDesktop(): Boolean;
+  两者都落在 Program Files\dotnet（ARM64 机器上的 x64 运行时才会去 dotnet\x64）。
+  只看目录名不够：卸载残留的空 / 半截版本目录 hostfxr 会跳过（它要求目录里有 <框架名>.deps.json，
+  dotnet --list-runtimes 也不列），我们却当成已装，结果装完客户端一启动就弹「请安装 .NET」、
+  用户怎么装都绕不出来（2026-11 Kickstarter 用户实报）。预发布版（10.0.0-rc.x）低于 10.0.0，
+  host 不会滚过去，也不能算。 }
+function HasFramework(Name: String): Boolean;
 var
   Root: String;
   FR: TFindRec;
 begin
   Result := False;
-  Root := ExpandConstant('{commonpf64}') + '\dotnet\shared\Microsoft.WindowsDesktop.App';
+  Root := ExpandConstant('{commonpf64}') + '\dotnet\shared\' + Name;
   if not DirExists(Root) then
     Exit;
   if FindFirst(Root + '\*', FR) then
   begin
     try
       repeat
-        { 用 DirExists 判断目录，避免依赖 FILE_ATTRIBUTE_* 常量是否预定义 }
         if (Copy(FR.Name, 1, Length('{#DotNetChannel}.')) = '{#DotNetChannel}.') and
-           DirExists(Root + '\' + FR.Name) then
+           (Pos('-', FR.Name) = 0) and
+           FileExists(Root + '\' + FR.Name + '\' + Name + '.deps.json') then
         begin
           Result := True;
           Exit;
@@ -193,6 +204,12 @@ begin
       FindClose(FR);
     end;
   end;
+end;
+
+{ Desktop Runtime 安装包同时带 NETCore.App，两个都要在，客户端 runtimeconfig 两个都引用 }
+function HasDotNetDesktop(): Boolean;
+begin
+  Result := HasFramework('Microsoft.NETCore.App') and HasFramework('Microsoft.WindowsDesktop.App');
 end;
 
 function InitializeSetup(): Boolean;
@@ -276,15 +293,22 @@ begin
         'and then run Setup again.', [ResultCode]);
       Exit;
     end;
-    { 退出码不可全信（例如被组策略拦下仍回 0），以实际装上为准 }
+    { 退出码不可全信（例如被组策略拦下仍回 0；残留文件让 MSI 以为已装、直接回 1638），以实际装上为准 }
     if not HasDotNetDesktop() then
       Result := 'The .NET {#DotNetChannel} Desktop Runtime installer finished, but the runtime is still ' +
-        'not present. Install it manually from https://dotnet.microsoft.com/download/dotnet/{#DotNetChannel} ' +
-        'and then run Setup again.';
+        'not present or is incomplete. If "Microsoft Windows Desktop Runtime - {#DotNetChannel}.x ({#Arch})" ' +
+        'is listed in Settings > Apps, uninstall or repair it there; otherwise install it manually from ' +
+        'https://dotnet.microsoft.com/download/dotnet/{#DotNetChannel} (".NET Desktop Runtime", {#Arch}). ' +
+        'Then run Setup again.';
   finally
     DownloadPage.ProgressBar.Style := npbstNormal;
     DownloadPage.Hide;
   end;
+end;
+
+function IsRelaunch(): Boolean;
+begin
+  Result := ExpandConstant('{param:RELAUNCH|0}') = '1';
 end;
 
 { ---- PATH 处理 ---- }

@@ -81,9 +81,13 @@ public partial class App : Application
         // 指纹触发注入：后台轮询服务端信号，命中前台注入项时自动填入密码。
         Services.AppServices.Injection.Start();
 
-        // 应用升级检查：每天自动查一次 GitHub Release，发现新版只用托盘通知提示（不下载、不安装），
-        // 点通知打开 Release 页面。同一版本只提示一次；关于页一直能看到并手动再查。
-        _tray.TrayBalloonTipClicked += (_, _) => Services.AppUpdate.OpenReleasePage(Services.AppUpdate.Available);
+        // 应用升级检查：每天自动查一次 GitHub Release，发现新版只用托盘通知提示（不自动下载安装），
+        // 点通知打开关于页，由用户点「立即更新」。同一版本只提示一次；关于页一直能看到并手动再查。
+        _tray.TrayBalloonTipClicked += (_, _) =>
+        {
+            ShowWindow();
+            _window?.GoToAbout();
+        };
         Services.AppUpdate.StartDailyCheck(release =>
         {
             try

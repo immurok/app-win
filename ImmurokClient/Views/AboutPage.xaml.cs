@@ -54,26 +54,33 @@ public partial class AboutPage : Page
         await LoadCurrentVersionAsync();
     }
 
-    // ---- 应用更新（只提示，不下载安装）----
+    // ---- 应用更新：检查 → 立即更新（下载、校验、静默安装）----
 
-    /// <summary>有新版本就显示提示和「前往下载」；没有则收起整块。</summary>
+    private bool _appInstalling;
+
+    /// <summary>有新版本就显示提示和「立即更新 / 前往下载」；没有则收起整块。</summary>
     private void ShowAppUpdate(AppRelease? release)
     {
+        if (_appInstalling) return;   // 下载 / 安装进行中，别被语言切换之类刷掉进度
         if (release is null)
         {
             AppUpdatePanel.Visibility = Visibility.Collapsed;
-            AppDownloadBtn.Visibility = Visibility.Collapsed;
+            AppActions.Visibility = Visibility.Collapsed;
             return;
         }
         AppUpdateStatus.Text = T("msg.appupdate.available", release.Version, AppVersion);
-        AppDownloadBtn.Visibility = Visibility.Visible;
+        // 没有本机架构的安装包、或客户端未签名（开发构建）时只能去 Release 页面手动下载
+        AppInstallBtn.Visibility = release.Installer is not null && AppUpdate.CanSelfUpdate
+            ? Visibility.Visible : Visibility.Collapsed;
+        AppActions.Visibility = Visibility.Visible;
         AppUpdatePanel.Visibility = Visibility.Visible;
     }
 
     private async void OnAppCheckClick(object sender, RoutedEventArgs e)
     {
+        if (_appInstalling) return;
         AppCheckBtn.IsEnabled = false;
-        AppDownloadBtn.Visibility = Visibility.Collapsed;
+        AppActions.Visibility = Visibility.Collapsed;
         AppUpdateStatus.Text = T("msg.appupdate.checking");
         AppUpdatePanel.Visibility = Visibility.Visible;
         try
@@ -96,6 +103,54 @@ public partial class AboutPage : Page
     }
 
     private void OnAppDownloadClick(object sender, RoutedEventArgs e) => AppUpdate.OpenReleasePage(AppUpdate.Available);
+
+    private async void OnAppInstallClick(object sender, RoutedEventArgs e)
+    {
+        AppRelease? release = AppUpdate.Available;
+        if (_appInstalling || release is null) return;
+        if (!MessageDialog.Confirm(Window.GetWindow(this), T("about.app"),
+                T("msg.appupdate.confirm", release.Version), MessageKind.Info, T("about.app.install")))
+            return;
+
+        _appInstalling = true;
+        AppCheckBtn.IsEnabled = false;
+        AppActions.Visibility = Visibility.Collapsed;
+        AppProgress.Value = 0;
+        AppProgress.Visibility = Visibility.Visible;
+        AppInstallError err = AppInstallError.Launch;
+        try
+        {
+            err = await AppUpdate.DownloadAndInstallAsync(release,
+                stage => Dispatcher.Invoke(() => AppUpdateStatus.Text = stage switch
+                {
+                    AppInstallStage.Downloading => T("msg.appupdate.downloading", release.Version),
+                    AppInstallStage.Verifying => T("msg.appupdate.verifying"),
+                    _ => T("msg.appupdate.launching"),
+                }),
+                pct => Dispatcher.Invoke(() => AppProgress.Value = pct),
+                System.Threading.CancellationToken.None);
+        }
+        finally
+        {
+            _appInstalling = false;
+            AppProgress.Visibility = Visibility.Collapsed;
+            AppCheckBtn.IsEnabled = true;
+        }
+
+        if (err == AppInstallError.None)
+        {
+            // 安装包会结束客户端、装完再拉起；装不成（比如缺运行时又下载失败）它自己会报错，客户端照常在跑
+            AppUpdateStatus.Text = T("msg.appupdate.installing");
+            return;
+        }
+        ShowAppUpdate(release);
+        AppUpdateStatus.Text = err switch
+        {
+            AppInstallError.Cancelled => T("msg.appupdate.cancelled"),
+            AppInstallError.Verify => T("msg.appupdate.verify_fail"),
+            _ => T("msg.appupdate.install_fail"),
+        };
+    }
 
     /// <summary>
     /// 应用版本号取自程序集（源头是 Directory.Build.props 的 &lt;Version&gt;）。
