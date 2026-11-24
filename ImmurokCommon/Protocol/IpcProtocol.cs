@@ -31,7 +31,7 @@ public static class IpcProtocol
     public const string Feature     = "FEATURE";
     /// <summary>指纹注入信号轮询。INJECT:POLL -&gt; OK:&lt;pageId&gt;（有一次非锁屏态指纹匹配可用于注入，取用并消费）| OK（无）。</summary>
     public const string Inject      = "INJECT";
-    public const string Security    = "SECURITY";      // SECURITY:STATUS -> OK:cp_pipe=..;service_pipe=..;caller_check=..;data_acl=..;pairing_scope=..;owner=..
+    public const string Security    = "SECURITY";      // SECURITY:STATUS -> OK:cp_pipe=..;service_pipe=..;caller_check=..;data_acl=..;pairing_scope=..;owner=..;cred_store=..
     public const string SecurityStatus = "STATUS";
     public const string InjectPoll  = "POLL";
 
