@@ -84,6 +84,8 @@ public sealed class Worker : BackgroundService
     {
         _log.LogInformation("ImmurokService 启动");
         MigrateOwnerFromCredential();
+        // 旧版明文凭据迁移为 TPM 包裹：首次 TPM 生成 RSA 密钥可能要几秒，放后台做，不压在第一次解锁上。
+        _ = Task.Run(() => _creds.HasPassword());
         _dataDir.Apply();   // 数据目录 ACL 对账（安装包也设，谁先到都行）
 
         _ble.SignedFingerprintMatched += OnSignedFingerprintMatched;
