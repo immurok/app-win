@@ -232,7 +232,7 @@ public sealed class CredentialStore
         {
             var cred = Marshal.PtrToStructure<CREDENTIAL>(credPtr);
             username = cred.UserName ?? "";
-            byte[] blob = new byte[cred.CredentialBlob != IntPtr.Zero ? cred.CredentialBlobSize : 0];
+            byte[] blob = new byte[cred.CredentialBlob != IntPtr.Zero ? checked((int)cred.CredentialBlobSize) : 0];
             if (blob.Length > 0)
                 Marshal.Copy(cred.CredentialBlob, blob, 0, blob.Length);
             return blob;
