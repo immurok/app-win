@@ -295,6 +295,7 @@ public sealed class CommandHandlers
     ///   data_acl: ok / loose（数据目录 DACL 里仍有 Users / Everyone）
     ///   pairing_scope: user / machine（未迁移）/ unreadable（服务账户被改过）/ none（未配对）
     ///   owner: set / unset
+    ///   cred_store: tpm / dpapi（无 TPM，旧格式）/ none（未设置密码）
     /// </summary>
     private string HandleSecurityStatus()
     {
@@ -315,7 +316,8 @@ public sealed class CommandHandlers
             _ => "none",
         };
         return $"{IpcProtocol.Ok}:cp_pipe={cp};service_pipe={pipe};caller_check={_policy.Mode};" +
-               $"data_acl={acl};pairing_scope={scope};owner={(_owner.IsSet ? "set" : "unset")}";
+               $"data_acl={acl};pairing_scope={scope};owner={(_owner.IsSet ? "set" : "unset")};" +
+               $"cred_store={_creds.Mode}";
     }
 
     /// <summary>取消进行中的指纹门，让设备停止闪灯等待，等待中的操作立即以失败收尾。</summary>
