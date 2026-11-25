@@ -41,6 +41,8 @@ public sealed class BleManager : IAsyncDisposable
     private BluetoothLEPreferredConnectionParametersRequest? _connParamsRequest;
     private const int MinLinkTimeoutMs = 3000;
     private static readonly TimeSpan ConnParamsSettleDelay = TimeSpan.FromSeconds(3);
+    /// <summary>本次会话最近一条 0xF0 通知里的 supervision timeout（10 ms 单位）；0 = 还没收到。</summary>
+    private int _devLinkTimeout10ms;
 
     // OTA：独立服务/特征，与主命令通道分开。
     // 注意：OTA 特征是 Read/Write 型，无 Notify —— macOS 端采用「写入后轮询读取」
@@ -57,6 +59,17 @@ public sealed class BleManager : IAsyncDisposable
 
     // 连接串行化：避免 DeviceWatcher.Added 与启动查找并发重复连接。
     private readonly SemaphoreSlim _connectGate = new(1, 1);
+
+    // ---- 新配对设备插队 ----
+    // 全量探测是串行占着 _connectGate 做的，不在身边的鼠标/手柄每台要等到连接超时（最长 2×20 s）。
+    // 用户此时在系统蓝牙里配上 immurok，watcher 的 Added 只能排在后面——0.7.4 实测从配对到连上 54 s。
+    // 所以枚举完成之后才出现的设备走优先通道：打断在途的普通探测（仅限「识别是不是 immurok」阶段，
+    // 认出来之后的建链不打断），普通探测在有优先者等待时不去抢锁。
+    private int _priorityWaiters;                 // 正在等 _connectGate 的优先连接数
+    private readonly object _probeLock = new();
+    private CancellationTokenSource? _probeCts;   // 在途普通探测的识别阶段；认出 immurok 后置空
+    private string? _probeDeviceId;
+    private volatile bool _watcherEnumerated;     // watcher 初始枚举已结束：此后的 Added 才是新配对的设备
 
     // ---- 回连看门狗 ----
     // DeviceWatcher 的 Added/Updated 原本是唯一的重连触发源，但它靠不住：
@@ -82,6 +95,33 @@ public sealed class BleManager : IAsyncDisposable
     private int _scanRounds;
     /// <summary>上次成功连上的设备 id，跨断开保留，用于优先探测。</summary>
     private string? _lastKnownDeviceId;
+
+    /// <summary>
+    /// 连接路径上每个 WinRT 调用的上限。这些调用本身没有超时：蓝牙在调用途中断电
+    /// （入睡、适配器被拔）时可能永不返回，而它们是在 _connectGate 里、看门狗的一拍里等的——
+    /// 卡住一次，连接锁不放、单次触发的定时器不再武装，服务就一直断到重启。
+    /// </summary>
+    private const int WinRtTimeoutMs = 20000;
+    /// <summary>写 CMD 的上限。正常 2 s 内回 ATT ACK（slave latency 20 ≈ 1.3 s）。</summary>
+    private const int WriteTimeoutMs = 10000;
+    /// <summary>本次会话建立的时刻。用于忽略建链瞬间可能补发的 Connected 事件。</summary>
+    private DateTime _sessionStartUtc;
+    private static readonly TimeSpan SessionSettle = TimeSpan.FromSeconds(3);
+    /// <summary>连续「写成功但等不到回包」的次数；收到任何通知即清零。</summary>
+    private int _rspTimeouts;
+    private const int RspTimeoutsBeforeRebuild = 2;
+    /// <summary>在线巡检时，本拍比预期晚这么多就怀疑进程被冻过（短睡眠 / Modern Standby），主动探活。</summary>
+    private const int StallProbeSec = 3;
+    /// <summary>
+    /// 在线且这么久没收到任何通知就主动探活一次。兜的是「链路悄悄断过又被 Windows 的 HID 拉回来、
+    /// 而 ConnectionStatusChanged 一次都没来」：固件每次断连清 RSP 的 CCCD，旧会话从此收不到通知，
+    /// 设备上表现为触摸只闪黄灯（hidkbd.c「app not connected」分支），服务却一直显示已连接。
+    /// 空闲时没有任何命令在跑，上面几条检测都触发不了，用户只能重启。
+    /// 成本：每分钟一条 GET_STATUS（latency 20 下一次往返），有通知往来时不发。
+    /// </summary>
+    private const int IdleProbeSec = 60;
+    /// <summary>最近一次收到通知（或会话建立）的时刻，Environment.TickCount64。</summary>
+    private long _lastRxTick;
 
     // 配对：设备按键后异步送来 33B 公钥。
     private TaskCompletionSource<byte[]>? _pendingPairPubKey;
@@ -180,6 +220,8 @@ public sealed class BleManager : IAsyncDisposable
         _watcher.Added += OnDeviceAdded;
         _watcher.Updated += OnDeviceUpdated;
         _watcher.Removed += OnDeviceRemoved;
+        _watcherEnumerated = false;
+        _watcher.EnumerationCompleted += OnEnumerationCompleted;
         _watcher.Start();
         _log.LogInformation("开始查找已配对的 immurok 设备…");
 
@@ -213,9 +255,9 @@ public sealed class BleManager : IAsyncDisposable
         if (Interlocked.Exchange(ref _reconnectBusy, 1) == 1) return;
         try
         {
-            DateTime now = DateTime.UtcNow;
-            TimeSpan gap = now - _lastTickUtc;
-            _lastTickUtc = now;
+            // _lastTickUtc 在上一拍的 finally 里记（即武装定时器的时刻），所以 gap 不含扫描耗时。
+            // 以前在拍首记：一次全量探测超过 20 s 就被误判成「刚睡醒」，把刚建好的链路强拆一次。
+            TimeSpan gap = DateTime.UtcNow - _lastTickUtc;
 
             // 睡眠/休眠检测：进程被冻住时定时器不走，醒来后这一拍的实际间隔远大于预期。
             // 不用 SystemEvents.PowerModeChanged —— 服务跑在 Session 0，那套广播到不到手
@@ -235,7 +277,22 @@ public sealed class BleManager : IAsyncDisposable
             // 直接读设备的连接状态复核，免得抱着一条死链路当成在线。
             MarkDisconnectedIfLinkDead(force: false);
 
-            if (_connected) { _backoffIndex = 0; return; }
+            if (_connected)
+            {
+                _backoffIndex = 0;
+                // 这一拍明显来晚了但又没到「睡眠恢复」的阈值：进程被短暂冻过。期间链路可能断了又被
+                // Windows 的 HID 拉回来，ConnectionStatus 读出来是 Connected，可固件每次断连都清 RSP 的
+                // CCCD，旧会话已经收不到通知。发一条命令看有没有回包。
+                if (gap > TimeSpan.FromSeconds(_lastArmedSec + StallProbeSec))
+                    await ProbeLinkAsync($"巡检间隔异常（{(int)gap.TotalSeconds}s）").ConfigureAwait(false);
+                else
+                {
+                    long idleSec = (Environment.TickCount64 - Volatile.Read(ref _lastRxTick)) / 1000;
+                    if (idleSec >= IdleProbeSec)
+                        await ProbeLinkAsync($"空闲 {idleSec}s").ConfigureAwait(false);
+                }
+                return;
+            }
 
             // watcher 停摆后不会再有任何回调，必须重建。
             DeviceWatcherStatus? st = _watcher?.Status;
@@ -258,6 +315,7 @@ public sealed class BleManager : IAsyncDisposable
         finally
         {
             Interlocked.Exchange(ref _reconnectBusy, 0);
+            _lastTickUtc = DateTime.UtcNow;
             if (_connected)
             {
                 _backoffIndex = 0;
@@ -290,6 +348,50 @@ public sealed class BleManager : IAsyncDisposable
         HandleDisconnect();
     }
 
+    /// <summary>
+    /// 主动探活：发 GET_STATUS，等不到回包就认定会话已失效（通知订阅丢了）并重建。
+    /// 有指纹门 / 命令 / OTA 在途时不探——它们自己会暴露死链路，也免得插进别人的时序。
+    /// </summary>
+    private async Task ProbeLinkAsync(string why)
+    {
+        BluetoothLEDevice? dev = _device;
+        if (!_connected || dev is null) return;
+        if (_pendingFpGate is not null || _cmdGate.CurrentCount == 0 || _otaGate.CurrentCount == 0) return;
+
+        // 先推后计时：探活失败但没重建（期间换了会话）时也别每 5 s 一拍连着探。
+        Volatile.Write(ref _lastRxTick, Environment.TickCount64);
+        byte[]? r = await SendCommandAsync(ImmurokCommand.GetStatus, timeoutMs: 4000).ConfigureAwait(false);
+        if (r is not null) return;
+        if (!_connected || !ReferenceEquals(_device, dev)) return; // 期间已经断开 / 重建过
+
+        _log.LogWarning("{Why}后探活无回包，会话已失效（通知订阅丢失），重建", why);
+        HandleDisconnect();
+    }
+
+    /// <summary>回到最快的重试节奏，下一轮强制全探。</summary>
+    private void KickReconnect()
+    {
+        _backoffIndex = 0;
+        _scanRounds = 0;
+        ArmReconnect(BackoffSec[0]);
+    }
+
+    /// <summary>给 WinRT 异步调用加上限；超时则取消并抛 <see cref="TimeoutException"/>。</summary>
+    private static async Task<T> Bounded<T>(Windows.Foundation.IAsyncOperation<T> op, int timeoutMs = WinRtTimeoutMs,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            // AsTask(ct)：ct 取消时连同底层 WinRT 操作一起取消。
+            return await op.AsTask(ct).WaitAsync(TimeSpan.FromMilliseconds(timeoutMs), ct).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            try { op.Cancel(); } catch { /* ignore */ }
+            throw;
+        }
+    }
+
     private void RestartWatcher()
     {
         StopScan();
@@ -302,6 +404,8 @@ public sealed class BleManager : IAsyncDisposable
         _watcher.Added -= OnDeviceAdded;
         _watcher.Updated -= OnDeviceUpdated;
         _watcher.Removed -= OnDeviceRemoved;
+        _watcher.EnumerationCompleted -= OnEnumerationCompleted;
+        _watcherEnumerated = false;
         try { _watcher.Stop(); } catch { /* ignore */ }
         _watcher = null;
     }
@@ -326,8 +430,8 @@ public sealed class BleManager : IAsyncDisposable
         try
         {
             string selector = BluetoothLEDevice.GetDeviceSelectorFromPairingState(true);
-            DeviceInformationCollection infos = await DeviceInformation.FindAllAsync(
-                selector, new[] { AepIsConnected });
+            DeviceInformationCollection infos = await Bounded(DeviceInformation.FindAllAsync(
+                selector, new[] { AepIsConnected }));
 
             // 上次连上的那台优先探测：稳态下一次就命中，不必把耳机鼠标挨个做服务发现。
             var ordered = infos.OrderByDescending(i => i.Id == _lastKnownDeviceId).ToList();
@@ -354,10 +458,30 @@ public sealed class BleManager : IAsyncDisposable
         }
     }
 
+    private void OnEnumerationCompleted(DeviceWatcher sender, object args)
+    {
+        // 只认当前这只 watcher：重建后旧 watcher 迟到的回调不能把新一轮枚举提前标成结束。
+        if (ReferenceEquals(sender, _watcher)) _watcherEnumerated = true;
+    }
+
     private async void OnDeviceAdded(DeviceWatcher sender, DeviceInformation info)
     {
         if (_connected) return;
-        await TryConnectDeviceAsync(info.Id, info.Name);
+        // 初始枚举期间的 Added 是既有设备（与启动全探重复），照常排队；
+        // 枚举结束后才冒出来的是用户刚在系统蓝牙里配对的，插队。
+        bool fresh = _watcherEnumerated && ReferenceEquals(sender, _watcher);
+        if (fresh) _log.LogInformation("检测到新配对的 BLE 设备，优先探测: {Name}", info.Name);
+        await TryConnectDeviceAsync(info.Id, info.Name, priority: fresh);
+    }
+
+    /// <summary>打断在途的普通探测（识别阶段），给优先连接腾出 _connectGate。正在探的就是同一台时不打断。</summary>
+    private void CancelProbeInFlight(string exceptDeviceId)
+    {
+        lock (_probeLock)
+        {
+            if (_probeCts is null || _probeDeviceId == exceptDeviceId) return;
+            try { _probeCts.Cancel(); } catch (ObjectDisposedException) { /* 刚好结束 */ }
+        }
     }
 
     private async void OnDeviceUpdated(DeviceWatcher sender, DeviceInformationUpdate update)
@@ -365,6 +489,18 @@ public sealed class BleManager : IAsyncDisposable
         // 设备从断开变为已连接时，尝试接上。
         if (_connected) return;
         await TryConnectDeviceAsync(update.Id, null);
+        if (_connected) return;
+
+        // 设备刚被 Windows 拉起（IsConnected 变 true）这一下常常接不上：链路还在加密 / GATT 忙。
+        // Updated 只在属性变化时来一次，不会再有第二次；而看门狗此时可能已经退避到 60 s 一拍
+        // （电脑醒来几分钟后才去摸设备就是这样），于是「摸了没反应，过一分钟自己好了」。
+        // 所以这里把节奏拉回最快。只认上次连过的那台，别让鼠标耳机的上下线也来重置退避。
+        bool nowConnected = update.Properties.TryGetValue(AepIsConnected, out object? v) && v is true;
+        if (nowConnected && (_lastKnownDeviceId is null || update.Id == _lastKnownDeviceId))
+        {
+            _log.LogInformation("设备已被系统连上但 GATT 会话未建成，回到快速重试");
+            KickReconnect();
+        }
     }
 
     private void OnDeviceRemoved(DeviceWatcher sender, DeviceInformationUpdate update)
@@ -380,48 +516,89 @@ public sealed class BleManager : IAsyncDisposable
     /// 尝试把某个已配对设备当作 immurok 连接：打开设备 → 查 immurok 服务 UUID →
     /// 若存在则认定为目标设备，拿 CMD/RSP 特征并订阅通知。
     /// </summary>
-    private async Task TryConnectDeviceAsync(string deviceId, string? name)
+    private async Task TryConnectDeviceAsync(string deviceId, string? name, bool priority = false)
     {
-        await _connectGate.WaitAsync();
+        if (priority)
+        {
+            // 先登记再打断：普通探测拿到锁后会复查这个计数，两边总有一边看得到对方。
+            Interlocked.Increment(ref _priorityWaiters);
+            try
+            {
+                CancelProbeInFlight(exceptDeviceId: deviceId);
+                await _connectGate.WaitAsync();
+            }
+            finally { Interlocked.Decrement(ref _priorityWaiters); }
+        }
+        else
+        {
+            // SemaphoreSlim 不保证先来后到，所以普通探测主动让：有优先者在等就不抢，抢到了也还回去。
+            while (true)
+            {
+                while (Volatile.Read(ref _priorityWaiters) > 0) await Task.Delay(100);
+                await _connectGate.WaitAsync();
+                if (Volatile.Read(ref _priorityWaiters) == 0) break;
+                _connectGate.Release();
+            }
+        }
+
+        CancellationTokenSource? probeCts = null;
+
+        // 没被会话接管（adopted）的对象统一在 finally 里释放——包括中途超时 / 抛异常的情况。
+        BluetoothLEDevice? device = null;
+        GattDeviceService? service = null;
+        GattDeviceService? otaService = null;
+        GattCharacteristic? rsp = null;
+        bool rspHooked = false;
+        bool adopted = false;
         try
         {
             if (_connected) return;
 
-            BluetoothLEDevice? device = await BluetoothLEDevice.FromIdAsync(deviceId);
+            // 识别阶段（下面两个调用）可被新配对的设备打断；优先连接自己不可打断。
+            CancellationToken idCt = default;
+            if (!priority)
+            {
+                probeCts = new CancellationTokenSource();
+                lock (_probeLock) { _probeCts = probeCts; _probeDeviceId = deviceId; }
+                idCt = probeCts.Token;
+                // 登记之前刚好来了优先者（它的打断没看到我们）：直接让位，本轮跳过这台。
+                if (Volatile.Read(ref _priorityWaiters) > 0) return;
+            }
+
+            device = await Bounded(BluetoothLEDevice.FromIdAsync(deviceId), ct: idCt);
             if (device is null) return;
 
             // 一次性枚举全部服务（对齐 macOS discoverServices 的做法）——同一设备上
             // 连续多次 GetGattServicesForUuidAsync 会触发 0x80070016 ERROR_BAD_COMMAND。
-            GattDeviceServicesResult svc = await device.GetGattServicesAsync(BluetoothCacheMode.Uncached);
+            GattDeviceServicesResult svc = await Bounded(device.GetGattServicesAsync(BluetoothCacheMode.Uncached), ct: idCt);
+
+            // 识别阶段结束：往后（认出 immurok 后的建链）不再接受打断。
+            if (probeCts is not null)
+                lock (_probeLock) { if (ReferenceEquals(_probeCts, probeCts)) { _probeCts = null; _probeDeviceId = null; } }
+
             if (svc.Status != GattCommunicationStatus.Success)
             {
-                device.Dispose();
+                if (deviceId == _lastKnownDeviceId)
+                    _log.LogDebug("枚举 GATT 服务失败: {Status}", svc.Status);
                 return;
             }
 
-            GattDeviceService? service = null;
-            GattDeviceService? otaService = null;
             foreach (GattDeviceService s in svc.Services)
             {
-                if (s.Uuid == BleConstants.ImmurokService) service = s;
-                else if (s.Uuid == BleConstants.OtaService) otaService = s;
+                if (s.Uuid == BleConstants.ImmurokService && service is null) service = s;
+                else if (s.Uuid == BleConstants.OtaService && otaService is null) otaService = s;
                 else s.Dispose(); // 不用的服务立即释放
             }
 
             // 无 immurok 服务 = 不是我们的设备。
-            if (service is null)
-            {
-                otaService?.Dispose();
-                device.Dispose();
-                return;
-            }
+            if (service is null) return;
 
             _log.LogInformation("找到 immurok 设备: {Name} ({Id})", device.Name, deviceId);
 
             // 请求对该 GATT 服务的访问（部分场景下不请求会拿不到特征）。
             try
             {
-                DeviceAccessStatus access = await service.RequestAccessAsync();
+                DeviceAccessStatus access = await Bounded(service.RequestAccessAsync());
                 if (access != DeviceAccessStatus.Allowed)
                     _log.LogWarning("RequestAccessAsync: {Access}", access);
             }
@@ -429,7 +606,6 @@ public sealed class BleManager : IAsyncDisposable
 
             // 首次枚举特征偶尔因 GATT 缓存/连接尚未稳定返回空，重试若干次并打印诊断。
             GattCharacteristic? cmd = null;
-            GattCharacteristic? rsp = null;
             for (int attempt = 1; attempt <= 4; attempt++)
             {
                 cmd = await GetCharacteristicAsync(service, BleConstants.CmdCharacteristic);
@@ -437,7 +613,7 @@ public sealed class BleManager : IAsyncDisposable
                 if (cmd is not null && rsp is not null) break;
 
                 // 诊断：列出该服务下实际存在的所有特征 UUID。
-                GattCharacteristicsResult all = await service.GetCharacteristicsAsync(BluetoothCacheMode.Uncached);
+                GattCharacteristicsResult all = await Bounded(service.GetCharacteristicsAsync(BluetoothCacheMode.Uncached));
                 if (all.Status == GattCommunicationStatus.Success)
                     _log.LogWarning("第 {A}/4 次未取到 CMD/RSP；该服务实际特征: [{List}]",
                         attempt, string.Join(", ", all.Characteristics.Select(c => c.Uuid.ToString())));
@@ -450,23 +626,17 @@ public sealed class BleManager : IAsyncDisposable
             if (cmd is null || rsp is null)
             {
                 _log.LogError("未找到 CMD/RSP 特征（若反复如此，检查是否有僵尸 ImmurokService 进程占用设备，或重置设备蓝牙）");
-                otaService?.Dispose();
-                service.Dispose();
-                device.Dispose();
                 return;
             }
 
             // 订阅 RSP 通知。
             rsp.ValueChanged += OnRspValueChanged;
-            GattCommunicationStatus cccd = await rsp.WriteClientCharacteristicConfigurationDescriptorAsync(
-                GattClientCharacteristicConfigurationDescriptorValue.Notify);
+            rspHooked = true;
+            GattCommunicationStatus cccd = await Bounded(rsp.WriteClientCharacteristicConfigurationDescriptorAsync(
+                GattClientCharacteristicConfigurationDescriptorValue.Notify));
             if (cccd != GattCommunicationStatus.Success)
             {
                 _log.LogError("订阅 RSP 通知失败: {Status}", cccd);
-                rsp.ValueChanged -= OnRspValueChanged;
-                otaService?.Dispose();
-                service.Dispose();
-                device.Dispose();
                 return;
             }
 
@@ -477,8 +647,13 @@ public sealed class BleManager : IAsyncDisposable
             _connectedDeviceId = deviceId;
             _lastKnownDeviceId = deviceId; // 跨断开保留，下次扫描优先探它
             DeviceName = device.Name;
+            _rspTimeouts = 0;
+            _sessionStartUtc = DateTime.UtcNow;
+            Volatile.Write(ref _lastRxTick, Environment.TickCount64);
+            Volatile.Write(ref _devLinkTimeout10ms, 0);
             _device.ConnectionStatusChanged += OnConnectionStatusChanged;
             _connected = true;
+            adopted = true;
             _ = EnsureLinkTimeoutAsync(device);
 
             // OTA 特征（可选，不影响主功能）。服务已在上面的单次枚举中取得；
@@ -498,12 +673,32 @@ public sealed class BleManager : IAsyncDisposable
             _log.LogInformation("已连接 immurok: {Name}", DeviceName);
             ConnectionChanged?.Invoke(true);
         }
+        catch (OperationCanceledException) when (probeCts is { IsCancellationRequested: true })
+        {
+            _log.LogDebug("探测让位给新配对的设备，本轮跳过: {Id}", deviceId);
+        }
+        catch (TimeoutException)
+        {
+            _log.LogWarning("连接设备超时（{Ms}ms 内蓝牙栈无响应），放弃本次尝试: {Id}", WinRtTimeoutMs, deviceId);
+        }
         catch (Exception ex)
         {
             _log.LogError(ex, "连接设备失败: {Id}", deviceId);
         }
         finally
         {
+            if (probeCts is not null)
+            {
+                lock (_probeLock) { if (ReferenceEquals(_probeCts, probeCts)) { _probeCts = null; _probeDeviceId = null; } }
+                probeCts.Dispose();
+            }
+            if (!adopted)
+            {
+                if (rspHooked) { try { rsp!.ValueChanged -= OnRspValueChanged; } catch { /* ignore */ } }
+                try { otaService?.Dispose(); } catch { /* ignore */ }
+                try { service?.Dispose(); } catch { /* ignore */ }
+                try { device?.Dispose(); } catch { /* ignore */ }
+            }
             _connectGate.Release();
         }
     }
@@ -527,6 +722,18 @@ public sealed class BleManager : IAsyncDisposable
             if (!_connected || !ReferenceEquals(_device, device)) return;
             if (LinkTimeoutOk(device, "稳定后")) return;
 
+            // 主机侧读数不够，先向设备求证再动手。GetConnectionParameters() 在睡眠恢复后会滞后：
+            // 用户日志（2026-11-25，0.7.4）里设备 07:09:22 已通知 60ms/20/6s，主机 3 s 后读到的仍是
+            // 15ms/0/2s，于是误申请了 Balanced——latency 被压成 0、timeout 反而从 6 s 降到 4 s，
+            // 申请对象一直持有到下次断连，设备每 60 ms 醒一次耗了近 6 小时。
+            int? devTimeoutMs = await DeviceLinkTimeoutMsAsync().ConfigureAwait(false);
+            if (!_connected || !ReferenceEquals(_device, device)) return;
+            if (devTimeoutMs >= MinLinkTimeoutMs)
+            {
+                _log.LogInformation("主机侧读数滞后：设备侧 supervision timeout 已是 {Timeout}ms，不申请兜底", devTimeoutMs);
+                return;
+            }
+
             _connParamsRequest?.Dispose();
             _connParamsRequest = device.RequestPreferredConnectionParameters(
                 BluetoothLEPreferredConnectionParameters.Balanced);
@@ -534,6 +741,22 @@ public sealed class BleManager : IAsyncDisposable
                 _connParamsRequest.Status);
         }
         catch (Exception ex) { _log.LogWarning(ex, "检查/申请 BLE 连接参数失败"); }
+    }
+
+    /// <summary>
+    /// 设备侧看到的 supervision timeout（ms）。优先现问（GET_CONN_PARAMS），老固件不认这条命令或
+    /// 无回包时退回本次会话最近一条 0xF0 参数更新通知；两者都没有返回 null（照旧按主机读数处理）。
+    /// </summary>
+    private async Task<int?> DeviceLinkTimeoutMsAsync()
+    {
+        try
+        {
+            var p = await GetConnParamsAsync().ConfigureAwait(false);
+            if (p is not null) return p.Value.Timeout * 10;
+        }
+        catch (Exception ex) { _log.LogDebug(ex, "读取设备侧连接参数失败"); }
+        int notified = Volatile.Read(ref _devLinkTimeout10ms);
+        return notified > 0 ? notified * 10 : null;
     }
 
     [System.Runtime.Versioning.SupportedOSPlatform("windows10.0.22621.0")]
@@ -548,18 +771,33 @@ public sealed class BleManager : IAsyncDisposable
 
     private static async Task<GattCharacteristic?> GetCharacteristicAsync(GattDeviceService service, Guid uuid)
     {
-        GattCharacteristicsResult r = await service.GetCharacteristicsForUuidAsync(uuid, BluetoothCacheMode.Uncached);
+        GattCharacteristicsResult r = await Bounded(service.GetCharacteristicsForUuidAsync(uuid, BluetoothCacheMode.Uncached));
         return r.Status == GattCommunicationStatus.Success && r.Characteristics.Count > 0
             ? r.Characteristics[0] : null;
     }
 
     private void OnConnectionStatusChanged(BluetoothLEDevice sender, object args)
     {
-        if (sender.ConnectionStatus == BluetoothConnectionStatus.Disconnected)
+        if (!_connected) return;
+
+        BluetoothConnectionStatus status;
+        try { status = sender.ConnectionStatus; }
+        catch { status = BluetoothConnectionStatus.Disconnected; } // 对象已失效
+
+        if (status == BluetoothConnectionStatus.Disconnected)
         {
             _log.LogWarning("设备连接状态变为断开");
             HandleDisconnect();
+            return;
         }
+
+        // 读到 Connected：说明这次回调对应的断开已经被 Windows（HID）抢先拉回来了——回调跑到时
+        // 状态已翻回去（睡眠恢复后事件成批补发时最常见）。链路是新的，而固件每次断连都清 RSP 的
+        // CCCD，旧会话收不到任何通知：表现为「显示已连接、指纹无反应、命令全超时」。按断开重建。
+        // 刚建好的会话不算（建链瞬间的 Connected 事件不代表断过）。
+        if (DateTime.UtcNow - _sessionStartUtc < SessionSettle) return;
+        _log.LogWarning("链路断开后已被系统重新建立，旧会话的通知订阅失效，重建");
+        HandleDisconnect();
     }
 
     private void HandleDisconnect()
@@ -591,6 +829,7 @@ public sealed class BleManager : IAsyncDisposable
         _pendingFpGate?.TrySetResult(null);
         _pendingFpGate = null;
         _fpGateFails = 0;
+        _rspTimeouts = 0;
         _gateBudget.Reset();
 
         if (was) ConnectionChanged?.Invoke(false);
@@ -638,7 +877,9 @@ public sealed class BleManager : IAsyncDisposable
             GattWriteResult w;
             try
             {
-                w = await _cmdChar.WriteValueWithResultAsync(packet.AsBuffer(), GattWriteOption.WriteWithResponse);
+                w = await Bounded(
+                    _cmdChar.WriteValueWithResultAsync(packet.AsBuffer(), GattWriteOption.WriteWithResponse),
+                    WriteTimeoutMs);
             }
             catch (Exception ex)
             {
@@ -664,6 +905,17 @@ public sealed class BleManager : IAsyncDisposable
             {
                 _log.LogWarning("命令 0x{Cmd:X2} 超时", (byte)command);
                 lock (_pendingLock) { if (_pendingResponse == tcs) _pendingResponse = null; }
+
+                // 写成功（设备回了 ATT ACK）却连着几条命令都等不到回包、期间也没收到过任何通知：
+                // 链路是活的但通知订阅丢了（漏掉的断开重连，见 OnConnectionStatusChanged）。重建会话。
+                // 调用方主动取消的不算；指纹门挂着时不拆（设备在等触摸，门自己有超时）。
+                if (!ct.IsCancellationRequested
+                    && Interlocked.Increment(ref _rspTimeouts) >= RspTimeoutsBeforeRebuild
+                    && _pendingFpGate is null && _connected)
+                {
+                    _log.LogWarning("连续 {N} 条命令无回包，通知订阅疑已失效，重建会话", RspTimeoutsBeforeRebuild);
+                    HandleDisconnect();
+                }
                 return null;
             }
         }
@@ -681,6 +933,8 @@ public sealed class BleManager : IAsyncDisposable
         if (data.Length == 0) return;
 
         _log.LogDebug("RX [{Hex}]", Convert.ToHexString(data));
+        _rspTimeouts = 0; // 通知通道是活的
+        Volatile.Write(ref _lastRxTick, Environment.TickCount64);
 
         // 异步事件优先分发；否则视为在途命令响应。
         switch (data[0])
@@ -694,7 +948,9 @@ public sealed class BleManager : IAsyncDisposable
                 return;
 
             case NotifyOpcode.PairStatus when data.Length == 6:
-                // [0xF0, ...] 实为 BLE 连接参数更新通知，非配对；记录即可。
+                // [0xF0][interval:2 BE][latency:1][timeout:2 BE] 实为 BLE 连接参数更新通知，非配对。
+                // 记下设备侧的 timeout（10 ms 单位），供 EnsureLinkTimeoutAsync 与主机读数互证。
+                Volatile.Write(ref _devLinkTimeout10ms, data[4] << 8 | data[5]);
                 _log.LogDebug("连接参数更新通知 0xF0");
                 return;
 
